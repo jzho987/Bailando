@@ -92,7 +92,7 @@ def rotmat2aa(rotmats):
     assert rotmats.shape[-1] == 3 and rotmats.shape[-2] == 3 and len(rotmats.shape) >= 3, 'invalid input dimension'
     orig_shape = rotmats.shape[:-2]
     rots = np.reshape(rotmats, [-1, 3, 3])
-    r = R.from_dcm(rots)  # from_matrix
+    r = R.from_matrix(rots)
     aas = r.as_rotvec()
     return np.reshape(aas, orig_shape + (3,))
 
