@@ -19,45 +19,53 @@ fi
 
 echo "[INFO] saving results to, or loading files from: "$expname
 
+srun=true
+partition_name=""
 if [ "$3" == "" ]; then
-    echo "[ERROR] enter partition name"
-    exit
+    # if no partition, we do not use srun
+    echo "no partition name, srun is not enabled"
+    srun=false
+else
+    partition_name=$3
+    echo "[INFO] partition name: $partition_name"
 fi
-partition_name=$3
-echo "[INFO] partition name: $partition_name"
 
+gpunum=""
 if [ "$4" == "" ]; then
-    echo "[ERROR] enter gpu num"
-    exit
+    # if no gpu num defined, we do not use srun
+    echo "no gpu num, srun is not enabled"
+    srun=false
+else
+    gpunum=$4
+    gpunum=$(($gpunum<8?$gpunum:8))
+    echo "[INFO] GPU num: $gpunum"
+    ((ntask=$gpunum*3))
 fi
-gpunum=$4
-gpunum=$(($gpunum<8?$gpunum:8))
-echo "[INFO] GPU num: $gpunum"
-((ntask=$gpunum*3))
 
 
-TOOLS="srun --mpi=pmi2 --partition=$partition_name --gres=gpu:$gpunum -N 1 --job-name=${config_suffix} "
+TOOLS="srun --mpi=pmi2 --partition=$partition_name --gres=gpu:$gpunum -n1 --job-name=${config_suffix}"
 PYTHONCMD="python -u main_actor_critic.py --config $1"
 
-if [ $2 == "train" ];
-then
-    $TOOLS $PYTHONCMD \
-    --train 
-elif [ $2 == "eval" ];
-then
-    $TOOLS $PYTHONCMD \
-    --eval 
-elif [ $2 == "visgt" ];
-then
-    $TOOLS $PYTHONCMD \
-    --visgt 
-elif [ $2 == "anl" ];
-then
-    $TOOLS $PYTHONCMD \
-    --anl 
-elif [ $2 == "sample" ];
-then
-    $TOOLS $PYTHONCMD \
-    --sample 
+# default is eval
+mode="--eval"
+
+if [ $2 == "train" ]; then
+    mode="--train"
+elif [ $2 == "eval" ]; then
+    mode="--eval"
+elif [ $2 == "visgt" ]; then
+    mode="--visgt"
+elif [ $2 == "anl" ]; then
+    mode="--anl"
+elif [ $2 == "sample" ]; then
+    mode="--sample"
+else
+    echo "mode: "$2" is undefined, please choose from: 'train', 'eval', 'visgt', 'anl', 'sample'"
+fi
+
+if [ $srun == false ]; then
+    $PYTHONCMD $mode
+else
+    $TOOLS $PYTHONCMD $mode
 fi
 

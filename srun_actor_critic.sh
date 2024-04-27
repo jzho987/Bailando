@@ -20,24 +20,27 @@ fi
 echo "[INFO] saving results to, or loading files from: "$expname
 
 srun=true
+partition_name=""
 if [ "$3" == "" ]; then
     # if no partition, we do not use srun
     echo "no partition name, srun is not enabled"
     srun=false
+else
+    partition_name=$3
+    echo "[INFO] partition name: $partition_name"
 fi
 
-partition_name=$3
-echo "[INFO] partition name: $partition_name"
-
+gpunum=""
 if [ "$4" == "" ]; then
     # if no gpu num defined, we do not use srun
     echo "no gpu num, srun is not enabled"
     srun=false
+else
+    gpunum=$4
+    gpunum=$(($gpunum<8?$gpunum:8))
+    echo "[INFO] GPU num: $gpunum"
+    ((ntask=$gpunum*3))
 fi
-gpunum=$4
-gpunum=$(($gpunum<8?$gpunum:8))
-echo "[INFO] GPU num: $gpunum"
-((ntask=$gpunum*3))
 
 
 TOOLS="srun --mpi=pmi2 --partition=$partition_name --gres=gpu:$gpunum -n1 --job-name=${config_suffix}"
