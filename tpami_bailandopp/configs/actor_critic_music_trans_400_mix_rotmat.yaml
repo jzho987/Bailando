@@ -152,7 +152,7 @@ test_freq: 5
 log_per_updates: 1
 seed: 42
 rotmat: True
-cuda: True
+device: mps
 global_vel: True
 ds_rate: 8
 move: 8
@@ -179,6 +179,6 @@ music_normalize: False
 
 rotmat_input: False
 
-smpl_dir: /mnt/lustre/syli/dance/Bailando/smpl
+smpl_dir: smpl
 
 folder_suffix: rotmat

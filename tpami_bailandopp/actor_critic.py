@@ -49,6 +49,11 @@ def get_beat(key, music_root):
 class AC():
     def __init__(self, args):
         self.config = args
+
+        if not hasattr(self.config, 'device'):
+            raise Exception("no device type specified in config yaml. Please use default CPU is no CUDA or MPS device is available")
+        self.device = torch.device(self.config.device)
+
         torch.backends.cudnn.benchmark = True
         self._build()
 
@@ -71,13 +76,13 @@ class AC():
         log = Logger(self.config, self.expdir)
         updates = 0
         
-        checkpoint = torch.load(config.vqvae_weight)
+        checkpoint = torch.load(config.vqvae_weight, map_location=self.device)
         vqvae.load_state_dict(checkpoint['model'], strict=False)
 
         if hasattr(config, 'init_weight') and config.init_weight is not None and config.init_weight is not '':
             print('Use pretrained model!')
             print(config.init_weight)  
-            checkpoint = torch.load(config.init_weight)
+            checkpoint = torch.load(config.init_weight, map_location=self.device)
             gpt.load_state_dict(checkpoint['model'], strict=False)
         # self.model.eval()
 
@@ -85,7 +90,6 @@ class AC():
         torch.manual_seed(config.seed)
         #if args.cuda:
         torch.cuda.manual_seed(config.seed)
-        self.device = torch.device('cuda' if config.cuda else 'cpu')
         
         
         # Training Loop
@@ -383,20 +387,19 @@ class AC():
             # criterion = nn.MSELoss()
 
             
-            checkpoint = torch.load(config.vqvae_weight)
+            checkpoint = torch.load(config.vqvae_weight, map_location=self.device)
             vqvae.load_state_dict(checkpoint['model'], strict=False)
 
             # config = self.config
             # model = self.model.eval()
             epoch_tested = config.testing.ckpt_epoch
 
-            checkpoint = torch.load(config.vqvae_weight)
+            checkpoint = torch.load(config.vqvae_weight, map_location=self.device)
             vqvae.load_state_dict(checkpoint['model'], strict=False)
 
             ckpt_path = os.path.join(self.ckptdir, f"epoch_{epoch_tested}.pt")
-            self.device = torch.device('cuda' if config.cuda else 'cpu')
             print("Evaluation...")
-            checkpoint = torch.load(ckpt_path)
+            checkpoint = torch.load(ckpt_path, map_location=self.device)
             gpt.load_state_dict(checkpoint['model'])
             gpt.eval()
 
@@ -413,6 +416,11 @@ class AC():
                     quants = ([torch.ones(1, 1,).to(self.device).long() * 423], [torch.ones(1, 1,).to(self.device).long() * 12])
                 else:
                     music_seq, pose_seq = batch_eval
+
+                    # mps does not support float 64, so we cast to float32
+                    if self.device == torch.device('mps') :
+                        music_seq, pose_seq = music_seq.type(torch.float32), pose_seq.type(torch.float32)
+                        
                     music_seq = music_seq.to(self.device)
                     pose_seq = pose_seq.to(self.device)
                 
@@ -506,7 +514,7 @@ class AC():
 
         epoch_tested = config.testing.ckpt_epoch
         ckpt_path = os.path.join(self.ckptdir, f"epoch_{epoch_tested}.pt")
-        checkpoint = torch.load(ckpt_path)
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model'])
         model = self.model.eval()
 
@@ -514,7 +522,6 @@ class AC():
         all_quants = None
 
         torch.cuda.manual_seed(config.seed)
-        self.device = torch.device('cuda' if config.cuda else 'cpu')
         random_id = 0  # np.random.randint(0, 1e4)
         
         for i_eval, batch_eval in enumerate(tqdm(self.training_data, desc='Generating Dance Poses')):
@@ -540,7 +547,7 @@ class AC():
 
         epoch_tested = config.testing.ckpt_epoch
         ckpt_path = os.path.join(self.ckptdir, f"epoch_{epoch_tested}.pt")
-        checkpoint = torch.load(ckpt_path)
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model'])
         model = self.model.eval()
 
