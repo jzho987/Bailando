@@ -112,9 +112,10 @@ def matrix_to_rotation_6d(matrix: torch.Tensor) -> torch.Tensor:
 
 
 class SepVQVAERmix(nn.Module):
-    def __init__(self, hps):
+    def __init__(self, hps, device_name):
         super().__init__()
         self.hps = hps
+        self.device = torch.device(device_name)
         # self.cut_dim = hps.up_half_dim
         # self.use_rotmat = hps.use_rotmat if (hasattr(hps, 'use_rotmat') and hps.use_rotmat) else False
         self.chanel_num = hps.joint_channel
@@ -159,7 +160,7 @@ class SepVQVAERmix(nn.Module):
         xdown, xvel = self.vqvae_down.decode(zdown)
         b, t, cup = xup.size()
         _, _, cdown = xdown.size()
-        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num_rot, self.chanel_num_rot).cuda()
+        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num_rot, self.chanel_num_rot, device=self.device)
         x[:, :, smpl_up] = xup.view(b, t, cup//self.chanel_num_rot, self.chanel_num_rot)
         x[:, :, smpl_down] = xdown.view(b, t, cdown//self.chanel_num_rot, self.chanel_num_rot)
 
@@ -191,7 +192,7 @@ class SepVQVAERmix(nn.Module):
         xdown, xvel = self.vqvae_down.sample(n_samples)
         b, t, cup = xup.size()
         _, _, cdown = xdown.size()
-        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num_rot, self.chanel_num_rot).cuda()
+        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num_rot, self.chanel_num_rot, device=self.device)
         x[:, :, smpl_up] = xup.view(b, t, cup//self.chanel_num_rot, self.chanel_num_rot)
         x[:, :, smpl_down] = xdown.view(b, t, cdown//self.chanel_num_rot, self.chanel_num_rot)
 
@@ -226,7 +227,7 @@ class SepVQVAERmix(nn.Module):
         _, _, cup = x_out_up.size()
         _, _, cdown = x_out_down.size()
 
-        xout = torch.zeros(b, t, (cup+cdown)//self.chanel_num_rot, self.chanel_num_rot).cuda().float()
+        xout = torch.zeros(b, t, (cup+cdown)//self.chanel_num_rot, self.chanel_num_rot, device=self.device).float()
         xout[:, :, smpl_up] = xout[:, :, smpl_up] + x_out_up.view(b, t, cup//self.chanel_num_rot, self.chanel_num_rot)
         xout[:, :, smpl_down] = xout[:, :, smpl_down] + x_out_down.view(b, t, cdown//self.chanel_num_rot, self.chanel_num_rot)
 

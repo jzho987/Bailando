@@ -420,7 +420,7 @@ class AC():
                     # mps does not support float 64, so we cast to float32
                     if self.device == torch.device('mps') :
                         music_seq, pose_seq = music_seq.type(torch.float32), pose_seq.type(torch.float32)
-                        
+
                     music_seq = music_seq.to(self.device)
                     pose_seq = pose_seq.to(self.device)
                 
@@ -604,7 +604,7 @@ class AC():
         if hasattr(config.structure, 'name') and hasattr(config.structure_generate, 'name'):
             print(f'using {config.structure.name} and {config.structure_generate.name} ')
             model_class = getattr(models, config.structure.name)
-            model = model_class(config.structure)
+            model = model_class(config.structure, config.device)
 
             model_class2 = getattr(models, config.structure_generate.name)
             model2 = model_class2(config.structure_generate)
@@ -617,9 +617,10 @@ class AC():
         model = nn.DataParallel(model)
         model2 = nn.DataParallel(model2)
         dance_reward = nn.DataParallel(reward)
-        self.dance_reward = dance_reward.cuda()
-        self.model2 = model2.cuda()
-        self.model = model.cuda()
+
+        self.dance_reward = dance_reward.to(self.device)
+        self.model2 = model2.to(self.device)
+        self.model = model.to(self.device)
         
 
     def _build_train_loader(self):
