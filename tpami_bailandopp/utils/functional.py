@@ -471,7 +471,9 @@ def write2json(dances, dance_names, config, expdir, epoch):
 
 def visualizeAndWrite(results,config,expdir,dance_names, epoch, quants=None):
     if config.rotmat:
-        smpl = SMPL(model_path=config.smpl_dir, gender='MALE', batch_size=1)
+        root_path = os.path.join(os.path.realpath(os.path.dirname(__file__)), '../../')
+        smpl_path = os.path.join(root_path, config.smpl_dir,)
+        smpl = SMPL(model_path=smpl_path, gender='MALE', batch_size=1)
     np_dances = []
     np_dances_original = []
     dance_datas = []
