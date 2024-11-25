@@ -455,7 +455,7 @@ class MoQ():
 
         data = self.config.data
         if data.name == "aist":
-            print ("train with AIST++ dataset!")
+            print("train with AIST++ dataset!")
             train_music_data, train_dance_data, _ = load_data_aist(
                 data.train_dir, interval=data.seq_len, move=self.config.move_train if hasattr(self.config, 'move_train') else 64, rotmat=self.config.rotmat)
         else:
