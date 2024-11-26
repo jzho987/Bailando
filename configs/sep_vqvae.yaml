@@ -68,7 +68,7 @@ optimizer:
 # schedular: []
 data:
     name: aist   
-    train_dir: data/aistpp_train_wav
+    train_dir: data/aistpp_train_interval
     test_dir: data/aistpp_test_full_wav
     seq_len: 240
     data_type: None

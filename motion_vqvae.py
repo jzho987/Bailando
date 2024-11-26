@@ -6,6 +6,7 @@
 import os
 import time
 import random
+import json
 import argparse
 import torch
 import torch.nn as nn
@@ -425,8 +426,6 @@ class MoQ():
         visualizeAndWrite(results, config, self.sampledir, names, epoch_tested, quants)
 
 
-
-
     def _build(self):
         config = self.config
         self.start_epoch = 0
@@ -437,6 +436,7 @@ class MoQ():
         if not(hasattr(config, 'need_not_test_data') and config.need_not_train_data):      
             self._build_test_loader()
         self._build_optimizer()
+
 
     def _build_model(self):
         """ Define Model """
@@ -451,19 +451,21 @@ class MoQ():
         model = nn.DataParallel(model)
         self.model = model.cuda()
 
-    def _build_train_loader(self):
 
+    def _build_train_loader(self):
         data = self.config.data
-        if data.name == "aist":
-            print("train with AIST++ dataset!")
-            train_music_data, train_dance_data, _ = load_data_aist(
-                data.train_dir, interval=data.seq_len, move=self.config.move_train if hasattr(self.config, 'move_train') else 64, rotmat=self.config.rotmat)
-        else:
-            train_music_data, train_dance_data = load_data(
-                args_train.train_dir, 
-                interval=data.seq_len,
-                data_type=data.data_type)
-        self.training_data = prepare_dataloader(train_music_data, train_dance_data, self.config.batch_size)
+        print("train with AIST++ dataset!")
+        fnames = os.listdir(data.train_dir)
+        train_dance_data = []
+        for name in tqdm(fnames):
+            path = os.path.join(data.train_dir, name)
+            with open(path) as f:
+                json_data = json.loads(f.read())
+            np_dance = np.array(json_data)
+            train_dance_data.append(np_dance)
+        print(f"data loaded: {len(train_dance_data)}")
+
+        self.training_data = prepare_dataloader(train_dance_data, self.config.batch_size)
 
 
 
@@ -565,23 +567,8 @@ class MoQ():
         if not os.path.exists(self.sampledir):
             os.mkdir(self.sampledir)
 
-        # self.ckptdir = os.path.join(self.expdir, "ckpt")
-        # if not os.path.exists(self.ckptdir):
-        #     os.mkdir(self.ckptdir)
 
-
-
-        
-# def prepare_dataloader(music_data, dance_data, batch_size):
-#     data_loader = torch.utils.data.DataLoader(
-#         MoSeq(dance_data),
-#         num_workers=8,
-#         batch_size=batch_size,
-#         shuffle=True,
-#         pin_memory=True
-#                 # collate_fn=paired_collate_fn,
-#     )
-def prepare_dataloader(music_data, dance_data, batch_size):
+def prepare_dataloader(dance_data, batch_size):
     modata = MoSeq(dance_data)
     sampler = torch.utils.data.RandomSampler(modata, replacement=True)
     data_loader = torch.utils.data.DataLoader(
@@ -590,77 +577,7 @@ def prepare_dataloader(music_data, dance_data, batch_size):
         batch_size=batch_size,
         sampler=sampler,
         pin_memory=True
-                # collate_fn=paired_collate_fn,
     )
 
     return data_loader
-
-
-
-
-
-
-
-
-
-# def train_m2d(cfg):
-#     """ Main function """
-#     parser = argparse.ArgumentParser()
-
-#     parser.add_argument('--train_dir', type=str, default='data/train_1min',
-#                         help='the directory of dance data')
-#     parser.add_argument('--test_dir', type=str, default='data/test_1min',
-#                         help='the directory of music feature data')
-#     parser.add_argument('--data_type', type=str, default='2D',
-#                         help='the type of training data')
-#     parser.add_argument('--output_dir', metavar='PATH',
-#                         default='checkpoints/layers2_win100_schedule100_condition10_detach')
-
-#     parser.add_argument('--epoch', type=int, default=300000)
-#     parser.add_argument('--batch_size', type=int, default=16)
-#     parser.add_argument('--save_per_epochs', type=int, metavar='N', default=50)
-#     parser.add_argument('--log_per_updates', type=int, metavar='N', default=1,
-#                         help='log model loss per x updates (mini-batches).')
-#     parser.add_argument('--seed', type=int, default=1234,
-#                         help='random seed for data shuffling, dropout, etc.')
-#     parser.add_argument('--tensorboard', action='store_false')
-
-#     parser.add_argument('--d_frame_vec', type=int, default=438)
-#     parser.add_argument('--frame_emb_size', type=int, default=800)
-#     parser.add_argument('--d_pose_vec', type=int, default=24*3)
-#     parser.add_argument('--pose_emb_size', type=int, default=800)
-
-#     parser.add_argument('--d_inner', type=int, default=1024)
-#     parser.add_argument('--d_k', type=int, default=80)
-#     parser.add_argument('--d_v', type=int, default=80)
-#     parser.add_argument('--n_head', type=int, default=10)
-#     parser.add_argument('--n_layers', type=int, default=2)
-#     parser.add_argument('--lr', type=float, default=1e-4)
-#     parser.add_argument('--dropout', type=float, default=0.1)
-
-#     parser.add_argument('--seq_len', type=int, default=240)
-#     parser.add_argument('--max_seq_len', type=int, default=4500)
-#     parser.add_argument('--condition_step', type=int, default=10)
-#     parser.add_argument('--sliding_windown_size', type=int, default=100)
-#     parser.add_argument('--lambda_v', type=float, default=0.01)
-
-#     parser.add_argument('--cuda', type=str2bool, nargs='?', metavar='BOOL', const=True,
-#                         default=torch.cuda.is_available(),
-#                         help='whether to use GPU acceleration.')
-#     parser.add_argument('--aist', action='store_true', help='train on AIST++')
-#     parser.add_argument('--rotmat', action='store_true', help='train rotation matrix')
-
-#     args = parser.parse_args()
-#     args.d_model = args.frame_emb_size
-
-
-
-
-#     args_data = args.data
-#     args_structure = args.structure
-
-
-
- 
-
 

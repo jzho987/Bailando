@@ -116,44 +116,19 @@ def generate(model, src_aud, src_aud_pos, src_pos, src_pos_pos):
 
     return out_seq
 
+
 def img2video(expdir, epoch, audio_path=None):
     video_dir = os.path.join(expdir, "videos",f"ep{epoch:06d}")
     if not os.path.exists(video_dir):
         os.makedirs(video_dir)
 
     image_dir = os.path.join(expdir, "imgs", f"ep{epoch:06d}")
-
-
     dance_names = sorted(os.listdir(image_dir))
-    audio_dir = "aist_plusplus_final/all_musics"
-    
-    music_names = sorted(os.listdir(audio_dir))
     
     for dance in tqdm(dance_names, desc='Generating Videos'):
-        #pdb.set_trace()
         name = dance.split(".")[0]
         cmd = f"ffmpeg -r 60 -i {image_dir}/{dance}/frame%06d.png -vb 20M -vcodec mpeg4 -y {video_dir}/{name}.mp4 -loglevel quiet"
-        # cmd = f"ffmpeg -r 60 -i {image_dir}/{dance}/%05d.png -vb 20M -vcodec qtrle -y {video_dir}/{name}.mov -loglevel quiet"
-
         os.system(cmd)
-        
-        name1 = name.replace('cAll', 'c02')
-
-        if 'cAll' in name:
-            music_name = name[-9:-5] + '.wav'
-        else:
-            music_name = name + '.mp3'
-            audio_dir = 'extra/'
-            music_names = sorted(os.listdir(audio_dir))
-        
-        if music_name in music_names:
-            print('combining audio!')
-            audio_dir_ = os.path.join(audio_dir, music_name)
-            print(audio_dir_)
-            name_w_audio = name + "_audio"
-            cmd_audio = f"ffmpeg -i {video_dir}/{name}.mp4 -i {audio_dir_} -map 0:v -map 1:a -c:v copy -shortest -y {video_dir}/{name_w_audio}.mp4 -loglevel quiet"
-            os.system(cmd_audio)
-
 
 
 def visualize_json(fname_iter, image_dir, dance_name, dance_path, config, quant=None):
@@ -163,6 +138,7 @@ def visualize_json(fname_iter, image_dir, dance_name, dance_path, config, quant=
                                          remove_face_labels=False, basic_point_only=False))
     img = img.transpose(Image.FLIP_TOP_BOTTOM)
     img = np.asarray(img)
+    img = img.copy()
     if quant is not None:
         cv2.putText(img, str(quant[j]), (config.width-400, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 3)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
@@ -536,29 +512,13 @@ def load_data(data_dir, interval=900, data_type='2D'):
 
 
 def load_data_aist(data_dir, interval=120, move=40, rotmat=False, external_wav=None, external_wav_rate=1, music_normalize=False, wav_padding=0):
-    tot = 0
-    music_data, dance_data = [], []
+    dance_data = []
     fnames = sorted(os.listdir(data_dir))
-    # print(fnames)
-    # fnames = fnames[:10]  # For debug
     
-    if ".ipynb_checkpoints" in fnames:
-        fnames.remove(".ipynb_checkpoints")
-    for fname in fnames:
+    for fname in tqdm(fnames):
         path = os.path.join(data_dir, fname)
         with open(path) as f:
-            # print(path)
             sample_dict = json.loads(f.read())
-            np_music = np.array(sample_dict['music_array'])
-
-            if external_wav is not None:
-                wav_path = os.path.join(external_wav, fname.split('_')[-2] + '.json')
-                # print('load from external wav!')
-                with open(wav_path) as ff:
-                    sample_dict_wav = json.loads(ff.read())
-                    np_music = np.array(sample_dict_wav['music_array']).astype(np.float32)
-                    
-            
             np_dance = np.array(sample_dict['dance_array'])
 
             if not rotmat:
@@ -566,74 +526,19 @@ def load_data_aist(data_dir, interval=120, move=40, rotmat=False, external_wav=N
                 np_dance = np_dance - np.tile(root, (1, 24))  # Calculate relative offset with respect to root
                 np_dance[:, :3] = root
 
-            music_sample_rate = external_wav_rate if external_wav is not None else 1
-            # print('music_sample_rate', music_sample_rate)
-            # print(music_sample_rate)
-            if interval is not None:
-                seq_len, dim = np_music.shape
-                for i in range(0, seq_len, move):
-                    i_sample = i // music_sample_rate
-                    interval_sample = interval // music_sample_rate
-
-                    music_sub_seq = np_music[i_sample: i_sample + interval_sample]
-                    dance_sub_seq = np_dance[i: i + interval]
-
-                    if len(music_sub_seq) == interval_sample and len(dance_sub_seq) == interval:
-                        padding_sample = wav_padding // music_sample_rate
-                        # Add paddings/context of music
-                        music_sub_seq_pad = np.zeros((interval_sample + padding_sample * 2, dim), dtype=music_sub_seq.dtype)
-                        
-                        if padding_sample > 0:
-                            music_sub_seq_pad[padding_sample:-padding_sample] = music_sub_seq
-                            start_sample = padding_sample if i_sample > padding_sample else i_sample
-                            end_sample = padding_sample if i_sample + interval_sample + padding_sample < seq_len else seq_len - (i_sample + interval_sample)
-                            # print(end_sample)
-                            music_sub_seq_pad[padding_sample - start_sample:padding_sample] = np_music[i_sample - start_sample:i_sample]
-                            if end_sample == padding_sample:
-                                music_sub_seq_pad[-padding_sample:] = np_music[i_sample + interval_sample:i_sample + interval_sample + end_sample]
-                            else:     
-                                music_sub_seq_pad[-padding_sample:-padding_sample + end_sample] = np_music[i_sample + interval_sample:i_sample + interval_sample + end_sample]
-                        else:
-                            music_sub_seq_pad = music_sub_seq
-                        music_data.append(music_sub_seq_pad)
-                        dance_data.append(dance_sub_seq)
-                        tot += 1
-                        # if tot > 1:
-                        #     break
-            else:
-                music_data.append(np_music)
+            if interval is None:
                 dance_data.append(np_dance)
+                continue
 
-            # if tot > 1:
-            #     break
-            
-            # tot += 1
-            # if tot > 100:
-            #     break
-    music_np = np.stack(music_data).reshape(-1, music_data[0].shape[1])
-    music_mean = music_np.mean(0)
-    music_std = music_np.std(0)
-    music_std[(np.abs(music_mean) < 1e-5) & (np.abs(music_std) < 1e-5)] = 1
-    
-    # music_data_norm = [ (music_sub_seq - music_mean) / (music_std + 1e-10) for music_sub_seq in music_data ]
-    # print(music_np)
+            seq_len, _ = np_dance.shape
+            for i in range(0, seq_len, move):
+                dance_sub_seq = np_dance[i: i + interval]
+                print(f"i: {i}, seq size: {len(dance_sub_seq)}")
 
-    if music_normalize:
-        print('calculating norm mean and std')
-        music_data_norm = [ (music_sub_seq - music_mean) / (music_std + 1e-10) for music_sub_seq in music_data ]
-        with open('/mnt/lustressd/lisiyao1/dance_experiements/music_norm.json', 'w') as fff:
-            sample_dict = {
-                'music_mean': music_mean.tolist(), # musics[idx+i],
-                'music_std': music_std.tolist()
-            }
-            # print(sample_dict)
-            json.dump(sample_dict, fff)
-    else:
-        music_data_norm = music_data 
+                if len(dance_sub_seq) == interval:
+                    dance_data.append(dance_sub_seq)
 
-
-    return music_data_norm, dance_data, ['11', '22',]
-    # , [fn.replace('.json', '') for fn in fnames]
+    return dance_data
 
 
 def load_test_data(data_dir, data_type='2D'):
