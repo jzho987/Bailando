@@ -172,9 +172,9 @@ class MoQ():
             epoch_tested = config.testing.ckpt_epoch
 
             ckpt_path = os.path.join(self.ckptdir, f"epoch_{epoch_tested}.pt")
-            self.device = torch.device('cuda' if config.cuda else 'cpu')
+            self.device = torch.device(config.device)
             print("Evaluation...")
-            checkpoint = torch.load(ckpt_path)
+            checkpoint = torch.load(ckpt_path, map_location=torch.device(self.config.device))
             self.model.load_state_dict(checkpoint['model'])
             self.model.eval()
 
@@ -431,11 +431,14 @@ class MoQ():
         self.start_epoch = 0
         self._dir_setting()
         self._build_model()
-        if not(hasattr(config, 'need_not_train_data') and config.need_not_train_data):
+
+        if hasattr(config.data, 'train_dir'):
             self._build_train_loader()
-        if not(hasattr(config, 'need_not_test_data') and config.need_not_train_data):      
+            self._build_optimizer()
+
+        if hasattr(config.data, 'test_dir'):      
             self._build_test_loader()
-        self._build_optimizer()
+
 
 
     def _build_model(self):
@@ -449,7 +452,7 @@ class MoQ():
             raise NotImplementedError("Wrong Model Selection")
         
         model = nn.DataParallel(model)
-        self.model = model.cuda()
+        self.model = model.to(config.device)
 
 
     def _build_train_loader(self):

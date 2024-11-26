@@ -5,11 +5,12 @@ import torch.nn.functional as F
 import models.utils.dist_adapter as dist
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, k_bins, emb_width, mu):
+    def __init__(self, k_bins, emb_width, mu, device):
         super().__init__()
         self.k_bins = k_bins
         self.emb_width = emb_width
         self.mu = mu
+        self.device = device
         self.reset_k()
         self.threshold = 1.0
 
@@ -17,7 +18,7 @@ class BottleneckBlock(nn.Module):
         self.init = False
         self.k_sum = None
         self.k_elem = None
-        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width).cuda())
+        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width).to(self.device))
 
     def _tile(self, x):
         d, ew = x.shape
@@ -180,10 +181,11 @@ class BottleneckBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, l_bins, emb_width, mu, levels):
+    def __init__(self, l_bins, emb_width, mu, levels, device):
         super().__init__()
         self.levels = levels
-        level_block = lambda level: BottleneckBlock(l_bins, emb_width, mu)
+        self.device = device
+        level_block = lambda level: BottleneckBlock(l_bins, emb_width, mu, device)
         self.level_blocks = nn.ModuleList()
         for level in range(self.levels):
             self.level_blocks.append(level_block(level))
@@ -220,9 +222,10 @@ class NoBottleneckBlock(nn.Module):
         pass
 
 class NoBottleneck(nn.Module):
-    def __init__(self, levels):
+    def __init__(self, levels, device=None):
         super().__init__()
         self.level_blocks = nn.ModuleList()
+        self.device = device
         self.levels = levels
         for level in range(levels):
             self.level_blocks.append(NoBottleneckBlock())
@@ -236,7 +239,7 @@ class NoBottleneck(nn.Module):
         return zs
 
     def forward(self, xs):
-        zero = t.zeros(()).cuda()
+        zero = t.zeros(()).to(self.device)
         commit_losses = [zero for _ in range(self.levels)]
         metrics = [dict(entropy=zero, usage=zero, used_curr=zero, pn=zero, dk=zero) for _ in range(self.levels)]
         return xs, xs, commit_losses, metrics

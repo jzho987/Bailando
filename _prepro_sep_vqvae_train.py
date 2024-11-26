@@ -11,6 +11,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Pytorch implementation of Music2Dance')
     parser.add_argument('--config', default='')
+    parser.add_argument('--input_dir', default='./data/aistpp_train_interval')
     parser.add_argument('--output_dir', default='./data/aistpp_train_interval')
     return parser.parse_args()
 
@@ -26,8 +27,14 @@ def build_data_aist(data_dir, save_dir, interval=120, move=40, rotmat=False, ext
         dance_data = []
         path = os.path.join(data_dir, fname)
         with open(path) as f:
-            sample_dict = json.loads(f.read())
-            np_dance = np.array(sample_dict['dance_array'])
+            json_data = json.loads(f.read())
+            if type(json_data) == dict:
+                print(f"{path} is DICT")
+                json_data = json_data['dance_array']
+            else:
+                print(f"{path} is NOT")
+
+            np_dance = np.array(json_data)
 
             if not rotmat:
                 root = np_dance[:, :3]  # the root
@@ -62,7 +69,7 @@ def main():
     config = EasyDict(config)
 
     data = config.data
-    build_data_aist(data.train_dir, args.output_dir, interval=data.seq_len, move=config.move_train if hasattr(config, 'move_train') else 64, rotmat=config.rotmat)
+    build_data_aist(args.input_dir, args.output_dir, interval=data.seq_len, move=config.move_train if hasattr(config, 'move_train') else 64, rotmat=config.rotmat)
     
     
 if __name__ == "__main__":
