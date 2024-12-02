@@ -11,10 +11,9 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Pytorch implementation of Music2Dance')
     parser.add_argument('--config', default='')
-    parser.add_argument('--input_dir', default='./data/aistpp_train_interval')
-    parser.add_argument('--output_dir', default='./data/aistpp_train_interval')
+    parser.add_argument('--input_dir', default='./data/all_split_train')
+    parser.add_argument('--output_dir', default='./data/all_split_train_interval')
     return parser.parse_args()
-
 
 
 def build_data_aist(data_dir, save_dir, interval=120, move=40, rotmat=False, external_wav=None, external_wav_rate=1, music_normalize=False, wav_padding=0):
@@ -29,10 +28,11 @@ def build_data_aist(data_dir, save_dir, interval=120, move=40, rotmat=False, ext
         with open(path) as f:
             json_data = json.loads(f.read())
             if type(json_data) == dict:
-                print(f"{path} is DICT")
+                # print(f"{path} is DICT")
                 json_data = json_data['dance_array']
             else:
-                print(f"{path} is NOT")
+                # print(f"{path} is NOT")
+                pass
 
             np_dance = np.array(json_data)
 
@@ -53,12 +53,10 @@ def build_data_aist(data_dir, save_dir, interval=120, move=40, rotmat=False, ext
                     dance_data.append(dance_sub_seq)
 
         raw_name = ".".join(fname.split(".")[:-1])
-        ext = fname.split(".")[-1]
         for i, data in enumerate(dance_data):
-            data_name = f"{raw_name}_interval_{i}.{ext}"
+            data_name = f"{raw_name}_interval_{i}"
             full_path = os.path.join(save_dir, data_name)
-            with open(full_path, "w") as f:
-                f.write(json.dumps(data.tolist()))
+            np.save(full_path, data)
 
 
 def main():

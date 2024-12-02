@@ -50,7 +50,7 @@ loss_weight:
 optimizer:
     type: Adam
     kwargs:
-        lr: 0.00003
+        lr: 0.00001
         betas: [0.5, 0.999]
         weight_decay: 0
     schedular_kwargs:
@@ -68,10 +68,10 @@ testing:
     width: 960
     ckpt_epoch: 500
 
-expname: sep_vqvae_large_bins
+expname: sep_vqvae_large_bins_batch_128
 epoch: 500
-batch_size: 32
-save_per_epochs: 20
+batch_size: 128
+save_per_epochs: 25
 test_freq: 20
 log_per_updates: 1
 seed: 42

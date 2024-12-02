@@ -11,6 +11,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 import torch.utils.data
 from dataset.motion_seq import MoSeq, paired_collate_fn
 # from models.vqvae import VQVAE
@@ -39,130 +40,111 @@ class MoQ():
         torch.backends.cudnn.benchmark = True
         self._build()
 
-    def train(self):
+    def train(self, quick: bool):
         model = self.model.train()
         config = self.config
-        data = self.config.data
-        criterion = nn.MSELoss()
+
         training_data = self.training_data
-        test_loader = self.test_loader
         optimizer = self.optimizer
-        log = Logger(self.config, self.expdir)
-        updates = 0
         
         if hasattr(config, 'init_weight') and config.init_weight is not None and config.init_weight is not '':
             print('Use pretrained model!')
             print(config.init_weight)  
             checkpoint = torch.load(config.init_weight)
             model.load_state_dict(checkpoint['model'], strict=False)
-        # self.model.eval()
 
         random.seed(config.seed)
         torch.manual_seed(config.seed)
-        #if args.cuda:
         torch.cuda.manual_seed(config.seed)
-        self.device = torch.device('cuda' if config.cuda else 'cpu')
+        writer = SummaryWriter()
+        self.device = torch.device(config.device)
 
 
         # Training Loop
         for epoch_i in range(1, config.epoch + 1):
-            log.set_progress(epoch_i, len(training_data))
-
-            for batch_i, batch in enumerate(training_data):
-                # LR Scheduler missing
-                # pose_seq = map(lambda x: x.to(self.device), batch)
-                trans = None
+            train_epoch_total_loss = 0
+            for batch in tqdm(training_data):
                 pose_seq = batch.to(self.device)
                 if config.rotmat:
-                    # trans = pose_seq[:, :, :3]
                     pose_seq = pose_seq[:, :, 3:]
                 elif config.global_vel:
-                    # print('Use vel!')
-                    # print(pose_seq[:, : :3])
                     pose_seq[:, :-1, :3] = pose_seq[:, 1:, :3] - pose_seq[:, :-1, :3]
                     pose_seq[:, -1, :3] = pose_seq[:, -2, :3]
                     pose_seq = pose_seq.clone().detach()
 
                 else:
                     pose_seq[:, :, :3] = 0
-                # print(pose_seq.size())
                 optimizer.zero_grad()
 
-                output, loss, metrics = model(pose_seq)
+                _output, loss, _metrics = model(pose_seq)
+
+                train_epoch_total_loss += loss.clone().detach().cpu().item()
 
                 loss.backward()
-
-                # update parameters
                 optimizer.step()
 
-                stats = {
-                    'updates': updates,
-                    'loss': loss.item(),
-                    # 'velocity_loss_if_have': metrics[0]['velocity_loss'].item() + metrics[1]['velocity_loss'].item(),
-                    # 'acc_loss_if_have': metrics[0]['acceleration_loss'].item() + metrics[1]['acceleration_loss'].item()
-                }
-                #if epoch_i % self.config.log_per_updates == 0:
-                log.update(stats)
-                updates += 1
+            
+            train_epoch_avg_loss = train_epoch_total_loss / len(training_data)
+            writer.add_scalar("train_epoch_avg_loss", train_epoch_avg_loss, epoch_i)
+            writer.flush()
 
             checkpoint = {
                 'model': model.state_dict(),
                 'config': config,
                 'epoch': epoch_i
             }
-
-            # # Save checkpoint
             if epoch_i % config.save_per_epochs == 0 or epoch_i == 1:
                 filename = os.path.join(self.ckptdir, f'epoch_{epoch_i}.pt')
                 torch.save(checkpoint, filename)
+
             # Eval
-            if epoch_i % config.test_freq == 0:
-                with torch.no_grad():
-                    print("Evaluation...")
-                    model.eval()
-                    results = []
-                    random_id = 0  # np.random.randint(0, 1e4)
-                    quants = {}
-                    for i_eval, batch_eval in enumerate(tqdm(test_loader, desc='Generating Dance Poses')):
-                        # Prepare data
-                        # pose_seq_eval = map(lambda x: x.to(self.device), batch_eval)
-                        pose_seq_eval = batch_eval.to(self.device)
-                        src_pos_eval = pose_seq_eval[:, :] #
-                        global_shift = src_pos_eval[:, :, :3].clone()
-                        if config.rotmat:
-                            # trans = pose_seq[:, :, :3]
-                            src_pos_eval = src_pos_eval[:, :, 3:]
-                        elif config.global_vel:
-                            src_pos_eval[:, :-1, :3] = src_pos_eval[:, 1:, :3] - src_pos_eval[:, :-1, :3]
-                            src_pos_eval[:, -1, :3] = src_pos_eval[:, -2, :3]
-                        else:
-                            src_pos_eval[:, :, :3] = 0
+            # if epoch_i % config.test_freq == 0:
+            #     with torch.no_grad():
+            #         print("Evaluation...")
+            #         model.eval()
+            #         results = []
+            #         random_id = 0  # np.random.randint(0, 1e4)
+            #         quants = {}
+            #         for i_eval, batch_eval in enumerate(tqdm(test_loader, desc='Generating Dance Poses')):
+            #             # Prepare data
+            #             # pose_seq_eval = map(lambda x: x.to(self.device), batch_eval)
+            #             pose_seq_eval = batch_eval.to(self.device)
+            #             src_pos_eval = pose_seq_eval[:, :] #
+            #             global_shift = src_pos_eval[:, :, :3].clone()
+            #             if config.rotmat:
+            #                 # trans = pose_seq[:, :, :3]
+            #                 src_pos_eval = src_pos_eval[:, :, 3:]
+            #             elif config.global_vel:
+            #                 src_pos_eval[:, :-1, :3] = src_pos_eval[:, 1:, :3] - src_pos_eval[:, :-1, :3]
+            #                 src_pos_eval[:, -1, :3] = src_pos_eval[:, -2, :3]
+            #             else:
+            #                 src_pos_eval[:, :, :3] = 0
 
-                        pose_seq_out, loss, _ = model(src_pos_eval)  # first 20 secs
+            #             pose_seq_out, loss, _ = model(src_pos_eval)  # first 20 secs
 
-                        if config.rotmat:
-                            pose_seq_out = torch.cat([global_shift, pose_seq_out], dim=2)
-                        if config.global_vel:
-                            global_vel = pose_seq_out[:, :, :3].clone()
-                            pose_seq_out[:, 0, :3] = 0
-                            for iii in range(1, pose_seq_out.size(1)):
-                                pose_seq_out[:, iii, :3] = pose_seq_out[:, iii-1, :3] + global_vel[:, iii-1, :]
-                            # print('Use vel!')
-                            # print(pose_seq_out[:, :, :3])
-                        else:
-                            pose_seq_out[:, :, :3] = global_shift
-                        results.append(pose_seq_out)
-                        if config.structure.use_bottleneck:
-                            quants_pred = model.module.encode(src_pos_eval)
-                            if isinstance(quants_pred, tuple):
-                                quants[self.dance_names[i_eval]] = tuple(quants_pred[ii][0].cpu().data.numpy()[0] for ii in range(len(quants_pred)))
-                            else:
-                                quants[self.dance_names[i_eval]] = model.module.encode(src_pos_eval)[0].cpu().data.numpy()[0]
-                        else:
-                            quants = None
-                    visualizeAndWrite(results, config,self.visdir, self.dance_names, epoch_i, quants)
+            #             if config.rotmat:
+            #                 pose_seq_out = torch.cat([global_shift, pose_seq_out], dim=2)
+            #             if config.global_vel:
+            #                 global_vel = pose_seq_out[:, :, :3].clone()
+            #                 pose_seq_out[:, 0, :3] = 0
+            #                 for iii in range(1, pose_seq_out.size(1)):
+            #                     pose_seq_out[:, iii, :3] = pose_seq_out[:, iii-1, :3] + global_vel[:, iii-1, :]
+            #                 # print('Use vel!')
+            #                 # print(pose_seq_out[:, :, :3])
+            #             else:
+            #                 pose_seq_out[:, :, :3] = global_shift
+            #             results.append(pose_seq_out)
+            #             if config.structure.use_bottleneck:
+            #                 quants_pred = model.module.encode(src_pos_eval)
+            #                 if isinstance(quants_pred, tuple):
+            #                     quants[self.dance_names[i_eval]] = tuple(quants_pred[ii][0].cpu().data.numpy()[0] for ii in range(len(quants_pred)))
+            #                 else:
+            #                     quants[self.dance_names[i_eval]] = model.module.encode(src_pos_eval)[0].cpu().data.numpy()[0]
+            #             else:
+            #                 quants = None
+            #         visualizeAndWrite(results, config,self.visdir, self.dance_names, epoch_i, quants)
                 model.train()
-            self.schedular.step()  
+            # self.schedular.step()  
 
 
     def eval(self):
@@ -462,9 +444,7 @@ class MoQ():
         train_dance_data = []
         for name in tqdm(fnames):
             path = os.path.join(data.train_dir, name)
-            with open(path) as f:
-                json_data = json.loads(f.read())
-            np_dance = np.array(json_data)
+            np_dance = np.load(path)
             train_dance_data.append(np_dance)
         print(f"data loaded: {len(train_dance_data)}")
 
@@ -507,7 +487,7 @@ class MoQ():
         self.optimizer = optim(itertools.chain(self.model.module.parameters(),
                                              ),
                                              **config.kwargs)
-        self.schedular = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, **config.schedular_kwargs)
+        # self.schedular = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, **config.schedular_kwargs)
 
     def _dir_setting(self):
         data = self.config.data

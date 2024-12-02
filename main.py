@@ -11,6 +11,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Pytorch implementation of Music2Dance')
     parser.add_argument('--config', default='')
+    parser.add_argument('--quick', action='store_true')
     # exclusive arguments
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--train', action='store_true')
@@ -37,7 +38,7 @@ def main():
     print(config)
 
     if args.train:
-        agent.train()
+        agent.train(args.quick)
     elif args.eval:
         agent.eval()
     elif args.visgt:
