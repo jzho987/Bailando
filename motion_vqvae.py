@@ -76,17 +76,15 @@ class MoQ():
                     pose_seq[:, :, :3] = 0
                 optimizer.zero_grad()
 
-                _output, loss, _metrics = model(pose_seq)
+                _, loss, _ = model(pose_seq)
 
                 train_epoch_total_loss += loss.clone().detach().cpu().item()
-
                 loss.backward()
                 optimizer.step()
 
             
             train_epoch_avg_loss = train_epoch_total_loss / len(training_data)
             writer.add_scalar("train_epoch_avg_loss", train_epoch_avg_loss, epoch_i)
-            writer.flush()
 
             checkpoint = {
                 'model': model.state_dict(),
@@ -97,71 +95,50 @@ class MoQ():
                 filename = os.path.join(self.ckptdir, f'epoch_{epoch_i}.pt')
                 torch.save(checkpoint, filename)
 
-            # Eval
-            # if epoch_i % config.test_freq == 0:
-            #     with torch.no_grad():
-            #         print("Evaluation...")
-            #         model.eval()
-            #         results = []
-            #         random_id = 0  # np.random.randint(0, 1e4)
-            #         quants = {}
-            #         for i_eval, batch_eval in enumerate(tqdm(test_loader, desc='Generating Dance Poses')):
-            #             # Prepare data
-            #             # pose_seq_eval = map(lambda x: x.to(self.device), batch_eval)
-            #             pose_seq_eval = batch_eval.to(self.device)
-            #             src_pos_eval = pose_seq_eval[:, :] #
-            #             global_shift = src_pos_eval[:, :, :3].clone()
-            #             if config.rotmat:
-            #                 # trans = pose_seq[:, :, :3]
-            #                 src_pos_eval = src_pos_eval[:, :, 3:]
-            #             elif config.global_vel:
-            #                 src_pos_eval[:, :-1, :3] = src_pos_eval[:, 1:, :3] - src_pos_eval[:, :-1, :3]
-            #                 src_pos_eval[:, -1, :3] = src_pos_eval[:, -2, :3]
-            #             else:
-            #                 src_pos_eval[:, :, :3] = 0
+            if epoch_i % config.test_freq == 0:
+                with torch.no_grad():
+                    model.eval()
+                    test_epoch_total_loss = 0
+                    for i_eval, batch_eval in enumerate(tqdm(self.testing_data)):
+                        # Prepare data
+                        pose_seq_eval = batch_eval.to(self.device)
+                        src_pos_eval = pose_seq_eval[:, :] #
+                        global_shift = src_pos_eval[:, :, :3].clone()
+                        if config.rotmat:
+                            # trans = pose_seq[:, :, :3]
+                            src_pos_eval = src_pos_eval[:, :, 3:]
+                        elif config.global_vel:
+                            src_pos_eval[:, :-1, :3] = src_pos_eval[:, 1:, :3] - src_pos_eval[:, :-1, :3]
+                            src_pos_eval[:, -1, :3] = src_pos_eval[:, -2, :3]
+                        else:
+                            src_pos_eval[:, :, :3] = 0
 
-            #             pose_seq_out, loss, _ = model(src_pos_eval)  # first 20 secs
+                        _, loss, _ = model(src_pos_eval)  # first 20 secs
+                        test_epoch_total_loss += loss.detach().cpu().item()
 
-            #             if config.rotmat:
-            #                 pose_seq_out = torch.cat([global_shift, pose_seq_out], dim=2)
-            #             if config.global_vel:
-            #                 global_vel = pose_seq_out[:, :, :3].clone()
-            #                 pose_seq_out[:, 0, :3] = 0
-            #                 for iii in range(1, pose_seq_out.size(1)):
-            #                     pose_seq_out[:, iii, :3] = pose_seq_out[:, iii-1, :3] + global_vel[:, iii-1, :]
-            #                 # print('Use vel!')
-            #                 # print(pose_seq_out[:, :, :3])
-            #             else:
-            #                 pose_seq_out[:, :, :3] = global_shift
-            #             results.append(pose_seq_out)
-            #             if config.structure.use_bottleneck:
-            #                 quants_pred = model.module.encode(src_pos_eval)
-            #                 if isinstance(quants_pred, tuple):
-            #                     quants[self.dance_names[i_eval]] = tuple(quants_pred[ii][0].cpu().data.numpy()[0] for ii in range(len(quants_pred)))
-            #                 else:
-            #                     quants[self.dance_names[i_eval]] = model.module.encode(src_pos_eval)[0].cpu().data.numpy()[0]
-            #             else:
-            #                 quants = None
-            #         visualizeAndWrite(results, config,self.visdir, self.dance_names, epoch_i, quants)
+
+                test_epoch_avg_loss = test_epoch_total_loss / len(self.testing_data)
+                writer.add_scalar("test_epoch_avg_loss", test_epoch_avg_loss, epoch_i)
+                writer.flush()
+
                 model.train()
-            # self.schedular.step()  
 
 
     def eval(self):
         with torch.no_grad():
+            print("Evaluation...")
+
             config = self.config
             model = self.model.eval()
             epoch_tested = config.testing.ckpt_epoch
 
             ckpt_path = os.path.join(self.ckptdir, f"epoch_{epoch_tested}.pt")
             self.device = torch.device(config.device)
-            print("Evaluation...")
             checkpoint = torch.load(ckpt_path, map_location=torch.device(self.config.device))
             self.model.load_state_dict(checkpoint['model'])
             self.model.eval()
 
             results = []
-            random_id = 0  # np.random.randint(0, 1e4)
             quants = {}
 
             # the restored error
@@ -169,9 +146,8 @@ class MoQ():
             tot_eval_nums = 0
             tot_body_length = 0
             euclidean_errors = []
-            for i_eval, batch_eval in enumerate(tqdm(self.test_loader, desc='Generating Dance Poses')):
+            for i_eval, batch_eval in enumerate(tqdm(self.testing_data, desc='Generating Dance Poses')):
                 # Prepare data
-                # pose_seq_eval = map(lambda x: x.to(self.device), batch_eval)
                 pose_seq_eval = batch_eval.to(self.device)
                 src_pos_eval = pose_seq_eval[:, :] #
                 global_shift = src_pos_eval[:, :, :3].clone()
@@ -184,17 +160,9 @@ class MoQ():
                     pose_seq_eval[:, -1, :3] = pose_seq_eval[:, -2, :3]
                 else:
                     src_pos_eval[:, :, :3] = 0
-                
-                b, t, c = src_pos_eval.size()
-                # t = t - 1
-                
-                # diffgt = (src_pos_eval[:, 1:] - src_pos_eval[:, :-1]).view(b, t-1, c//3, 3)
-                
-                pose_seq_out, loss, _ = model(src_pos_eval)  
-                # diffout = (pose_seq_out[:, 1:] - pose_seq_out[:, :-1]).view(b, t-1, c//3, 3)
 
-                # diffgt2 = (src_pos_eval[:, 2:] + src_pos_eval[:, :-2] - 2 * src_pos_eval[:, 1:-1]).view(b, t-2, c//3, 3)
-                # diffout2 = (pose_seq_out[:, 2:] + pose_seq_out[:, :-2] - 2 * pose_seq_out[:, 1:-1]).view(b, t-2, c//3, 3)
+                b, t, c = src_pos_eval.size()
+                pose_seq_out, _, _ = model(src_pos_eval)  
                 
                 diff = (src_pos_eval - pose_seq_out).view(b, t, c//3, 3)
                 tot_euclidean_error += torch.mean(torch.sqrt(torch.sum(diff ** 2, dim=3)))
@@ -221,46 +189,22 @@ class MoQ():
                 if config.rotmat:
                     pose_seq_out = torch.cat([global_shift, pose_seq_out], dim=2)
                 results.append(pose_seq_out)
-                # moduel.module.encode
+
                 if config.structure.use_bottleneck:
                     quants_pred = model.module.encode(src_pos_eval)
                     if isinstance(quants_pred, tuple):
-                        quants[self.dance_names[i_eval]] = (model.module.encode(src_pos_eval)[0][0].cpu().data.numpy()[0], model.module.encode(src_pos_eval)[1][0].cpu().data.numpy()[0])
+                        quants[str(i_eval)] = (model.module.encode(src_pos_eval)[0][0].cpu().data.numpy()[0], model.module.encode(src_pos_eval)[1][0].cpu().data.numpy()[0])
                     else:
-                        quants[self.dance_names[i_eval]] = model.module.encode(src_pos_eval)[0].cpu().data.numpy()[0]
+                        quants[str(i_eval)] = model.module.encode(src_pos_eval)[0].cpu().data.numpy()[0]
                 else:
                     quants = None
 
-                # # visualize motion
-                # mo_gt = torch.mean(torch.sqrt(torch.sum(diffgt ** 2, dim=3)), dim=2)[0].data.cpu().numpy()
-                # mo_evl = torch.mean(torch.sqrt(torch.sum(diffout ** 2, dim=3)), dim=2)[0].data.cpu().numpy()
-
-                # mo_gt2 = torch.mean(torch.sqrt(torch.sum(diffgt2 ** 2, dim=3)), dim=2)[0].data.cpu().numpy()
-                # mo_evl2 = torch.mean(torch.sqrt(torch.sum(diffout2 ** 2, dim=3)), dim=2)[0].data.cpu().numpy()
-
-
-                indexs = np.arange(t)
-                # plt.plot(indexs[:-1], mo_evl)
-                # plt.plot(indexs[:-1], mo_gt)
-                # if not os.path.exists(os.path.join(self.evaldir, 'videos', f"ep{epoch_tested:06d}")):
-                #     os.mkdir(os.path.join(self.evaldir, 'videos', f"ep{epoch_tested:06d}"))
-                # plt.savefig(os.path.join(self.evaldir, 'videos', f"ep{epoch_tested:06d}", self.dance_names[i_eval]+'.jpg'))
-                # plt.close()
-
-                # plt.plot(indexs[:-2], mo_evl2)
-                # plt.plot(indexs[:-2], mo_gt2)
-                # if not os.path.exists(os.path.join(self.evaldir, 'videos', f"ep{epoch_tested:06d}")):
-                #     os.mkdir(os.path.join(self.evaldir, 'videos', f"ep{epoch_tested:06d}"))
-                # plt.savefig(os.path.join(self.evaldir, 'videos', f"ep{epoch_tested:06d}", self.dance_names[i_eval]+'_dif2.jpg'))
-                # plt.close()
-                        # exit()
             print(tot_euclidean_error / (tot_eval_nums * 1.0))
             print('avg body len', tot_body_length / tot_eval_nums)
             print(torch.mean(torch.stack(euclidean_errors)), torch.std(torch.stack(euclidean_errors)))
-            visualizeAndWrite(results, config, self.evaldir, self.dance_names, epoch_tested, quants)
+            dance_names = [str(x) for x in range(len(self.testing_data))]
+            visualizeAndWrite(results, config, self.evaldir, dance_names, epoch_tested, quants)
 
-            # metrics = quantized_metrics()
-            # print(metrics)
 
     def visgt(self,):
         config = self.config
@@ -269,7 +213,7 @@ class MoQ():
         results = []
         random_id = 0  # np.random.randint(0, 1e4)
         
-        for i_eval, batch_eval in enumerate(tqdm(self.test_loader, desc='Generating Dance Poses')):
+        for i_eval, batch_eval in enumerate(tqdm(self.testing_data, desc='Generating Dance Poses')):
             pose_seq_eval = batch_eval
             results.append(pose_seq_eval)
 
@@ -439,7 +383,7 @@ class MoQ():
 
     def _build_train_loader(self):
         data = self.config.data
-        print("train with AIST++ dataset!")
+        print("building training set")
         fnames = os.listdir(data.train_dir)
         train_dance_data = []
         for name in tqdm(fnames):
@@ -453,28 +397,17 @@ class MoQ():
 
 
     def _build_test_loader(self):
-        config = self.config
         data = self.config.data
-        if data.name == "aist":
-            print ("test with AIST++ dataset!")
-            music_data, dance_data, dance_names = load_test_data_aist(
-                data.test_dir, move=config.ds_rate, rotmat=config.rotmat)
-        
-        else:    
-            music_data, dance_data, dance_names = load_test_data(
-                data.test_dir, interval=None)
+        print("building testing set")
+        fnames = os.listdir(data.test_dir)
+        test_dance_data = []
+        for name in tqdm(fnames):
+            path = os.path.join(data.test_dir, name)
+            np_dance = np.load(path)[:896]
+            test_dance_data.append(np_dance)
+        print(f"data loaded: {len(test_dance_data)}")
 
-        #pdb.set_trace()
-
-        self.test_loader = torch.utils.data.DataLoader(
-            MoSeq(dance_data),
-            batch_size=1,
-            shuffle=False
-            # collate_fn=paired_collate_fn,
-        )
-        self.dance_names = dance_names
-        #pdb.set_trace()
-        #self.training_data = self.test_loader
+        self.testing_data = prepare_dataloader(test_dance_data, self.config.batch_size)
 
     def _build_optimizer(self):
         #model = nn.DataParallel(model).to(device)
