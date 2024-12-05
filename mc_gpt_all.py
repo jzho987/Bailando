@@ -4,31 +4,23 @@
 
 """ This script handling the training process. """
 import os
-import time
 import random
-import argparse
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.utils.data
-from dataset.md_seq import MoDaSeq, paired_collate_fn
-# from models.gpt2 import condGPT2
+from torch.utils.tensorboard import SummaryWriter
+from dataset.md_seq import MoDaSeq
 
-from utils.log import Logger
-from utils.functional import str2bool, load_data, load_data_aist, check_data_distribution,visualizeAndWrite,load_test_data_aist,load_test_data
 from torch.optim import *
 import warnings
 from tqdm import tqdm
 import itertools
-import pdb
 import numpy as np
 import models
 import datetime
 warnings.filterwarnings('ignore')
 
 import torch.nn.functional as F
-# a, b, c, d = check_data_distribution('/mnt/lustre/lisiyao1/dance/dance2/DanceRevolution/data/aistpp_train')
-
 import matplotlib.pyplot as plt
 
 
@@ -44,13 +36,10 @@ class MCTall():
         gpt = self.model2.train()
 
         config = self.config
-        data = self.config.data
-        # criterion = nn.MSELoss()
         training_data = self.training_data
-        test_loader = self.test_loader
+        testing_data = self.testing_data
         optimizer = self.optimizer
-        log = Logger(self.config, self.expdir)
-        updates = 0
+        writer = SummaryWriter()
         
         checkpoint = torch.load(config.vqvae_weight)
         vqvae.load_state_dict(checkpoint['model'], strict=False)
@@ -71,51 +60,13 @@ class MCTall():
 
         # Training Loop
         for epoch_i in range(1, config.epoch + 1):
-            log.set_progress(epoch_i, len(training_data))
-
-            for batch_i, batch in enumerate(training_data):
-                # LR Scheduler missing
-                # pose_seq = map(lambda x: x.to(self.device), batch)
-                
-                music_seq, pose_seq  = batch 
-
-                # print(music_seq.size(), pose_seq.size())
-                
-                music_seq = music_seq.to(self.device)
+            train_epoch_total_loss = 0
+            for _, batch in enumerate(training_data):
+                pose_seq  = batch 
                 pose_seq = pose_seq.to(self.device)
-
                 pose_seq[:, :, :3] = 0
-                # print(pose_seq.size())
                 optimizer.zero_grad()
-
-
-                # ds rate: dance motion input / dance feature
-                # music down sample rate: how many times should the music sequence be downsampled at T dimention
-                #   and how many be upsampled in channel dimension
-
-                # music relative rate: ds_rate / music relative rate = music sample frequency / dance 
-                music_ds_rate = config.ds_rate if not hasattr(config, 'external_wav') else config.external_wav_rate
-                music_ds_rate = config.music_ds_rate if hasattr(config, 'music_ds_rate') else music_ds_rate
-                music_relative_rate = config.music_relative_rate if hasattr(config, 'music_relative_rate') else config.ds_rate
                 
-                # print(music_seq.size())
-                # print(music_ds_rate, music_relative_rate)
-                # 32, 40, 55
-                music_seq = music_seq[:, :, :config.structure_generate.n_music//music_ds_rate].contiguous().float()
-                # print('L105, ', music_seq.size())
-
-                b, t, c = music_seq.size()
-                music_seq = music_seq.view(b, t//music_ds_rate, c*music_ds_rate)
-                # print('L109, ', music_seq.size())
-                if hasattr(config, 'music_normalize') and config.music_normalize:
-                    print('Normalize!')
-                    music_seq = music_seq / ( t//music_ds_rate * 1.0 )
-
-                # print(music_seq.size())
-                # music_seq = music_seq[:, :, :config.structure_generate.n_music//config.ds_rate].contiguous().float()
-                # b, t, c = music_seq.size()
-                # music_seq = music_seq.view(b, t//config.ds_rate, c*config.ds_rate)
-
                 with torch.no_grad():
                     quants_pred = vqvae.module.encode(pose_seq)
                     if isinstance(quants_pred, tuple):
@@ -125,116 +76,53 @@ class MCTall():
                         quants = quants_pred[0]
                         quants_input = quants[:, :-1].clone().detach()
                         quants_target = quants[:, 1:].clone().detach()
-                # music_seq = music_seq[:, 1:]
-                        # output, loss = gpt(quants[:, :-1].clone().detach(), music_seq[:, 1:], quants[:, 1:].clone().detach())
-                # print('L130, ', config.ds_rate//music_relative_rate)
-
-                output, loss = gpt(quants_input, music_seq[:, config.ds_rate//music_relative_rate:], quants_target)
+                
+                _, loss = gpt(quants_input, quants_target)
                 loss.backward()
-
-                # update parameters
                 optimizer.step()
 
-                stats = {
-                    'updates': updates,
-                    'loss': loss.item()
-                }
-                #if epoch_i % self.config.log_per_updates == 0:
-                log.update(stats)
-                updates += 1
+                train_epoch_total_loss += loss.clone().detach().cpu().item()
+
+            train_epoch_avg_loss = train_epoch_total_loss / len(training_data)
+            writer.add_scalar("train_epoch_avg_loss", train_epoch_avg_loss, epoch_i)
+
 
             checkpoint = {
                 'model': gpt.state_dict(),
                 'config': config,
                 'epoch': epoch_i
             }
-
-            # # Save checkpoint
             if epoch_i % config.save_per_epochs == 0 or epoch_i == 1:
                 filename = os.path.join(self.ckptdir, f'epoch_{epoch_i}.pt')
                 torch.save(checkpoint, filename)
-            # Eval
+                
             if epoch_i % config.test_freq == 0:
                 with torch.no_grad():
                     print("Evaluation...")
                     gpt.eval()
-                    results = []
-                    random_id = 0  # np.random.randint(0, 1e4)
-                    quants_out = {}
-                    for i_eval, batch_eval in enumerate(tqdm(test_loader, desc='Generating Dance Poses')):
-                        # Prepare data
-                        # pose_seq_eval = map(lambda x: x.to(self.device), batch_eval)
-                        music_seq, pose_seq = batch_eval
-                        music_seq = music_seq.to(self.device)
+                    test_epoch_total_loss = 0
+                    for _, batch in enumerate(tqdm(testing_data, desc='Generating Dance Poses')):
+                        pose_seq  = batch 
                         pose_seq = pose_seq.to(self.device)
+                        pose_seq[:, :, :3] = 0
                         
-                        quants = vqvae.module.encode(pose_seq)
-                        # print(pose_seq.size())
-                        if isinstance(quants, tuple):
-                            x = tuple(quants[i][0][:, :1] for i in range(len(quants)))
+                        quants_pred = vqvae.module.encode(pose_seq)
+                        if isinstance(quants_pred, tuple):
+                            quants_input = tuple(quants_pred[ii][0][:, :-1].clone().detach() for ii in range(len(quants_pred)))
+                            quants_target = tuple(quants_pred[ii][0][:, 1:].clone().detach() for ii in range(len(quants_pred)))
                         else:
-                            x = quants[0][:, :1]
-                        # print(x.size())
-                        # print(music_seq.size())
+                            quants = quants_pred[0]
+                            quants_input = quants[:, :-1].clone().detach()
+                            quants_target = quants[:, 1:].clone().detach()
                         
-                        music_ds_rate = config.ds_rate if not hasattr(config, 'external_wav') else config.external_wav_rate
-                        music_ds_rate = config.music_ds_rate if hasattr(config, 'music_ds_rate') else music_ds_rate
-                        music_relative_rate = config.music_relative_rate if hasattr(config, 'music_relative_rate') else config.ds_rate
-                        music_seq = music_seq[:, :, :config.structure_generate.n_music//music_ds_rate].contiguous().float()
-                        # print(music_seq.size())
-                        b, t, c = music_seq.size()
-                        music_seq = music_seq.view(b, t//music_ds_rate, c*music_ds_rate)
-                        music_seq = music_seq[:, config.ds_rate//music_relative_rate:]
-                        # print(music_seq.size())
-                        if hasattr(config, 'music_normalize') and config.music_normalize:
-                            music_seq = music_seq / ( t//music_ds_rate * 1.0 )
+                        _, loss = gpt(quants_input, quants_target)
+                        test_epoch_total_loss += loss.clone().detach().cpu().item()
 
-                        # block_size = gpt.module.get_block_size()
-
-                        zs = gpt.module.sample(x, cond=music_seq, shift=config.sample_shift if hasattr(config, 'sample_shift') else None)
-                        # jj = 0
-                        # for k in range(music_seq.size(1)):
-                        #     x_cond = x if x.size(1) <= block_size else x[:, -block_size:] # crop context if needed
-                        #     music_seq_input = music_seq[:, :k+1] if k < block_size else music_seq[:, k-block_size+1:k+1]
-                        #     # print(x_cond.size())
-                        #     # print(music_seq_input.size())
-                        #     logits, _ = gpt(x_cond, music_seq_input)
-                        #     # jj += 1
-                        #     # pluck the logits at the final step and scale by temperature
-                        #     logits = logits[:, -1, :]
-                        #     # optionally crop probabilities to only the top k options
-                        #     # if top_k is not None:
-                        #     #     logits = top_k_logits(logits, top_k)
-                        #     # apply softmax to convert to probabilities
-                        #     probs = F.softmax(logits, dim=-1)
-                        #     # sample from the distribution or take the most likely
-                        #     # if sample:
-                        #     #     ix = torch.multinomial(probs, num_samples=1)
-                        #     # else:
-                        #     _, ix = torch.topk(probs, k=1, dim=-1)
-                        #     # append to the sequence and continue
-                        #     x = torch.cat((x, ix), dim=1)
-
-                        # zs = [x]
-                        pose_sample = vqvae.module.decode(zs)
-
-                        if config.global_vel:
-                            # print('!!!!!')
-                            global_vel = pose_sample[:, :, :3].clone()
-                            pose_sample[:, 0, :3] = 0
-                            for iii in range(1, pose_sample.size(1)):
-                                pose_sample[:, iii, :3] = pose_sample[:, iii-1, :3] + global_vel[:, iii-1, :]
-
-                        if isinstance(zs, tuple):
-                            quants_out[self.dance_names[i_eval]] = tuple(zs[ii][0].cpu().data.numpy()[0] for ii in range(len(zs)))
-                        else:
-                            quants_out[self.dance_names[i_eval]] = zs[0].cpu().data.numpy()[0]
-                    
-                        results.append(pose_sample)
-
-                    visualizeAndWrite(results, config, self.visdir, self.dance_names, epoch_i, quants_out)
+                    test_epoch_avg_loss = test_epoch_total_loss / len(training_data)
+                    writer.add_scalar("test_epoch_avg_loss", test_epoch_avg_loss, epoch_i)
+                    writer.flush()
                 gpt.train()
-            self.schedular.step()
+
 
     def eval(self):
         with torch.no_grad():
@@ -444,11 +332,13 @@ class MCTall():
         self.start_epoch = 0
         self._dir_setting()
         self._build_model()
-        if not(hasattr(config, 'need_not_train_data') and config.need_not_train_data):
+
+        if hasattr(config.data, 'train_dir'):
             self._build_train_loader()
-        if not(hasattr(config, 'need_not_test_data') and config.need_not_train_data):      
+            self._build_optimizer()
+
+        if hasattr(config.data, 'test_dir'):      
             self._build_test_loader()
-        self._build_optimizer()
 
     def _build_model(self):
         """ Define Model """
@@ -468,57 +358,35 @@ class MCTall():
         self.model2 = model2.cuda()
         self.model = model.cuda()
 
-    def _build_train_loader(self):
 
+    def _build_train_loader(self):
         data = self.config.data
-        if data.name == "aist":
-            print ("train with AIST++ dataset!")
-            external_wav_rate = self.config.ds_rate // self.config.external_wav_rate  if hasattr(self.config, 'external_wav_rate') else 1
-            external_wav_rate = self.config.music_relative_rate if hasattr(self.config, 'music_relative_rate') else external_wav_rate
-            train_music_data, train_dance_data, _ = load_data_aist(
-                data.train_dir, interval=data.seq_len, move=self.config.move if hasattr(self.config, 'move') else 64, rotmat=self.config.rotmat, \
-                external_wav=self.config.external_wav if hasattr(self.config, 'external_wav') else None, \
-                external_wav_rate=external_wav_rate, \
-                music_normalize=self.config.music_normalize if hasattr(self.config, 'music_normalize') else False, \
-                wav_padding=self.config.wav_padding * (self.config.ds_rate // self.config.music_relative_rate) if hasattr(self.config, 'wav_padding') else 0 )
-        else:
-            train_music_data, train_dance_data = load_data(
-                args_train.train_dir, 
-                interval=data.seq_len,
-                data_type=data.data_type)
-        self.training_data = prepare_dataloader(train_music_data, train_dance_data, self.config.batch_size)
+        print("building training set")
+        fnames = os.listdir(data.train_dir)
+        train_dance_data = []
+        for name in tqdm(fnames):
+            path = os.path.join(data.train_dir, name)
+            np_dance = np.load(path)
+            train_dance_data.append(np_dance)
+        print(f"data loaded: {len(train_dance_data)}")
+
+        self.training_data = prepare_dataloader(train_dance_data, self.config.batch_size)
 
 
 
     def _build_test_loader(self):
-        config = self.config
         data = self.config.data
-        if data.name == "aist":
-            print ("test with AIST++ dataset!")
-            music_data, dance_data, dance_names = load_test_data_aist(
-                data.test_dir, \
-                move=config.move, \
-                rotmat=config.rotmat, \
-                external_wav=config.external_wav if hasattr(self.config, 'external_wav') else None, \
-                external_wav_rate=self.config.external_wav_rate if hasattr(self.config, 'external_wav_rate') else 1, \
-                music_normalize=self.config.music_normalize if hasattr(self.config, 'music_normalize') else False,\
-                wav_padding=self.config.wav_padding * (self.config.ds_rate // self.config.music_relative_rate) if hasattr(self.config, 'wav_padding') else 0)
-        
-        else:    
-            music_data, dance_data, dance_names = load_test_data(
-                data.test_dir, interval=None)
+        print("building testing set")
+        fnames = os.listdir(data.test_dir)
+        test_dance_data = []
+        for name in tqdm(fnames):
+            path = os.path.join(data.test_dir, name)
+            np_dance = np.load(path)[:896]
+            test_dance_data.append(np_dance)
+        print(f"data loaded: {len(test_dance_data)}")
 
-        #pdb.set_trace()
+        self.testing_data = prepare_dataloader(test_dance_data, self.config.batch_size)
 
-        self.test_loader = torch.utils.data.DataLoader(
-            MoDaSeq(music_data, dance_data),
-            batch_size=1,
-            shuffle=False
-            # collate_fn=paired_collate_fn,
-        )
-        self.dance_names = dance_names
-        #pdb.set_trace()
-        #self.training_data = self.test_loader
 
     def _build_optimizer(self):
         #model = nn.DataParallel(model).to(device)
@@ -532,6 +400,7 @@ class MCTall():
                                              ),
                                              **config.kwargs)
         self.schedular = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, **config.schedular_kwargs)
+
 
     def _dir_setting(self):
         data = self.config.data
