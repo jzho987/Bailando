@@ -61,7 +61,7 @@ class MCTall():
         # Training Loop
         for epoch_i in range(1, config.epoch + 1):
             train_epoch_total_loss = 0
-            for _, batch in enumerate(training_data):
+            for _, batch in enumerate(tqdm(training_data, desc=f"[ TRAIN ] Epoch: {epoch_i}")):
                 pose_seq  = batch 
                 pose_seq = pose_seq.to(self.device)
                 pose_seq[:, :, :3] = 0
@@ -101,7 +101,7 @@ class MCTall():
                     print("Evaluation...")
                     gpt.eval()
                     test_epoch_total_loss = 0
-                    for _, batch in enumerate(tqdm(testing_data, desc='Generating Dance Poses')):
+                    for _, batch in enumerate(tqdm(testing_data, desc=f"[ EVAL  ] Epoch: {epoch_i}")):
                         pose_seq  = batch 
                         pose_seq = pose_seq.to(self.device)
                         pose_seq[:, :, :3] = 0
