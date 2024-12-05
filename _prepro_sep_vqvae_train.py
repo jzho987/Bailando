@@ -13,10 +13,13 @@ def parse_args():
     parser.add_argument('--config', default='')
     parser.add_argument('--input_dir', default='./data/all_split_train')
     parser.add_argument('--output_dir', default='./data/all_split_train_interval')
+    parser.add_argument('--interval', type=int)
+    parser.add_argument('--move', type=int)
     return parser.parse_args()
 
 
 def build_data_aist(data_dir, save_dir, interval=120, move=40, rotmat=False, external_wav=None, external_wav_rate=1, music_normalize=False, wav_padding=0):
+    print(f"spliting data from {data_dir} with interval {interval}, and move of {move}")
     fnames = sorted(os.listdir(data_dir))
 
     if not os.path.exists(save_dir):
@@ -67,7 +70,13 @@ def main():
     config = EasyDict(config)
 
     data = config.data
-    build_data_aist(args.input_dir, args.output_dir, interval=data.seq_len, move=config.move_train if hasattr(config, 'move_train') else 64, rotmat=config.rotmat)
+    build_data_aist(
+            args.input_dir,
+            args.output_dir,
+            interval = data.seq_len if not hasattr(args, "interval") else args.interval,
+            move = args.move if hasattr(args, "move") else (config.move_train if hasattr(config, 'move_train') else 64),
+            rotmat=config.rotmat,
+        )
     
     
 if __name__ == "__main__":
