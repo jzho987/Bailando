@@ -46,6 +46,7 @@ class VQVAER(nn.Module):
         super().__init__()
         self.hps = hps
 
+        self.device = hps.device
         input_shape = (hps.sample_length, input_dim)
         levels = hps.levels
         downs_t = hps.downs_t
@@ -104,7 +105,7 @@ class VQVAER(nn.Module):
             self.decoders_root.append(decoder_root(level))
 
         if use_bottleneck:
-            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels)
+            self.bottleneck = Bottleneck(l_bins, emb_width, mu, levels, self.device)
         else:
             self.bottleneck = NoBottleneck(levels)
 

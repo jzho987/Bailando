@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter
-from dataset.md_seq import MoDaSeq
+from dataset.motion_seq import MoSeq
 
 from torch.optim import *
 import warnings
@@ -44,12 +44,12 @@ class MCTall():
         checkpoint = torch.load(config.vqvae_weight)
         vqvae.load_state_dict(checkpoint['model'], strict=False)
 
-        if hasattr(config, 'init_weight') and config.init_weight is not None and config.init_weight is not '':
-            print('Use pretrained model!')
-            print(config.init_weight)  
-            checkpoint = torch.load(config.init_weight)
-            gpt.load_state_dict(checkpoint['model'], strict=False)
-        # self.model.eval()
+        # if hasattr(config, 'init_weight') and config.init_weight is not None and config.init_weight is not '':
+        #     print('Use pretrained model!')
+        #     print(config.init_weight)  
+        #     checkpoint = torch.load(config.init_weight)
+        #     gpt.load_state_dict(checkpoint['model'], strict=False)
+        # # self.model.eval()
 
         random.seed(config.seed)
         torch.manual_seed(config.seed)
@@ -399,7 +399,6 @@ class MCTall():
         self.optimizer = optim(itertools.chain(self.model2.module.parameters(),
                                              ),
                                              **config.kwargs)
-        self.schedular = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, **config.schedular_kwargs)
 
 
     def _dir_setting(self):
@@ -463,91 +462,16 @@ class MCTall():
         if not os.path.exists(self.sampledir):
             os.mkdir(self.sampledir)
 
-        # self.ckptdir = os.path.join(self.expdir, "ckpt")
-        # if not os.path.exists(self.ckptdir):
-        #     os.mkdir(self.ckptdir)
 
-
-
-        
-def prepare_dataloader(music_data, dance_data, batch_size):
+def prepare_dataloader(dance_data, batch_size):
+    modata = MoSeq(dance_data)
+    sampler = torch.utils.data.RandomSampler(modata, replacement=True)
     data_loader = torch.utils.data.DataLoader(
-        MoDaSeq(music_data, dance_data),
+        modata,
         num_workers=8,
         batch_size=batch_size,
-        shuffle=True,
+        sampler=sampler,
         pin_memory=True
-                # collate_fn=paired_collate_fn,
     )
 
     return data_loader
-
-
-
-
-
-
-
-
-
-# def train_m2d(cfg):
-#     """ Main function """
-#     parser = argparse.ArgumentParser()
-
-#     parser.add_argument('--train_dir', type=str, default='data/train_1min',
-#                         help='the directory of dance data')
-#     parser.add_argument('--test_dir', type=str, default='data/test_1min',
-#                         help='the directory of music feature data')
-#     parser.add_argument('--data_type', type=str, default='2D',
-#                         help='the type of training data')
-#     parser.add_argument('--output_dir', metavar='PATH',
-#                         default='checkpoints/layers2_win100_schedule100_condition10_detach')
-
-#     parser.add_argument('--epoch', type=int, default=300000)
-#     parser.add_argument('--batch_size', type=int, default=16)
-#     parser.add_argument('--save_per_epochs', type=int, metavar='N', default=50)
-#     parser.add_argument('--log_per_updates', type=int, metavar='N', default=1,
-#                         help='log model loss per x updates (mini-batches).')
-#     parser.add_argument('--seed', type=int, default=1234,
-#                         help='random seed for data shuffling, dropout, etc.')
-#     parser.add_argument('--tensorboard', action='store_false')
-
-#     parser.add_argument('--d_frame_vec', type=int, default=438)
-#     parser.add_argument('--frame_emb_size', type=int, default=800)
-#     parser.add_argument('--d_pose_vec', type=int, default=24*3)
-#     parser.add_argument('--pose_emb_size', type=int, default=800)
-
-#     parser.add_argument('--d_inner', type=int, default=1024)
-#     parser.add_argument('--d_k', type=int, default=80)
-#     parser.add_argument('--d_v', type=int, default=80)
-#     parser.add_argument('--n_head', type=int, default=10)
-#     parser.add_argument('--n_layers', type=int, default=2)
-#     parser.add_argument('--lr', type=float, default=1e-4)
-#     parser.add_argument('--dropout', type=float, default=0.1)
-
-#     parser.add_argument('--seq_len', type=int, default=240)
-#     parser.add_argument('--max_seq_len', type=int, default=4500)
-#     parser.add_argument('--condition_step', type=int, default=10)
-#     parser.add_argument('--sliding_windown_size', type=int, default=100)
-#     parser.add_argument('--lambda_v', type=float, default=0.01)
-
-#     parser.add_argument('--cuda', type=str2bool, nargs='?', metavar='BOOL', const=True,
-#                         default=torch.cuda.is_available(),
-#                         help='whether to use GPU acceleration.')
-#     parser.add_argument('--aist', action='store_true', help='train on AIST++')
-#     parser.add_argument('--rotmat', action='store_true', help='train rotation matrix')
-
-#     args = parser.parse_args()
-#     args.d_model = args.frame_emb_size
-
-
-
-
-#     args_data = args.data
-#     args_structure = args.structure
-
-
-
- 
-
-

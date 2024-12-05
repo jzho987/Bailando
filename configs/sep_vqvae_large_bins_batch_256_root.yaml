@@ -1,5 +1,5 @@
 structure:
-    name: SepVQVAE
+    name: SepVQVAER
     up_half:
         device: cuda
         levels: 1

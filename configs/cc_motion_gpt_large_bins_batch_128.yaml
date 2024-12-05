@@ -1,6 +1,7 @@
 structure:
     name: SepVQVAER
     up_half:
+        device: cuda
         levels: 1
         downs_t: [3,]
         strides_t : [2,]
@@ -16,8 +17,14 @@ structure:
         sample_length: 240
         use_bottleneck: True
         joint_channel: 3
+        # depth: 3
+        # width: 128
+        # m_conv: 1.0
+        # dilation_growth_rate: 1
+        # dilation_cycle: None
         vqvae_reverse_decoder_dilation: True
     down_half:
+        device: cuda
         levels: 1
         downs_t: [3,]
         strides_t : [2,]
@@ -33,10 +40,18 @@ structure:
         sample_length: 240
         use_bottleneck: True
         joint_channel: 3
+        # depth: 3
+        # width: 128
+        # m_conv: 1.0
+        # dilation_growth_rate: 1
+        # dilation_cycle: None
+        acc: 1.0
         vqvae_reverse_decoder_dilation: True
+    device: cuda
     use_bottleneck: True
     joint_channel: 3
-    
+    l_bins : 2048
+
     
 structure_generate:
     name: CrossCondGPT2NoMusic

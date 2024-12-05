@@ -4,16 +4,12 @@
 
 """ This script handling the training process. """
 import os
-import time
 import random
-import json
-import argparse
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 import torch.utils.data
-from dataset.motion_seq import MoSeq, paired_collate_fn
+from dataset.motion_seq import MoSeq
 # from models.vqvae import VQVAE
 
 from utils.log import Logger
