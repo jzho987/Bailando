@@ -1,0 +1,85 @@
+structure:
+    name: SepVQVAE
+    up_half:
+        levels: 1
+        downs_t: [3,]
+        strides_t : [2,]
+        emb_width : 512
+        l_bins : 2048
+        l_mu : 0.99
+        commit : 0.02
+        hvqvae_multipliers : [1,]
+        width: 512
+        depth: 3
+        m_conv : 1.0
+        dilation_growth_rate : 3
+        sample_length: 240
+        use_bottleneck: True
+        joint_channel: 3
+        vel: 1
+        acc: 1
+        vqvae_reverse_decoder_dilation: True
+        device: cpu 
+    down_half:
+        levels: 1
+        downs_t: [3,]
+        strides_t : [2,]
+        emb_width : 512
+        l_bins : 2048
+        l_mu : 0.99
+        commit : 0.02
+        hvqvae_multipliers : [1,]
+        width: 512
+        depth: 3
+        m_conv : 1.0
+        dilation_growth_rate : 3
+        sample_length: 240
+        use_bottleneck: True
+        joint_channel: 3
+        vel: 1
+        acc: 1
+        vqvae_reverse_decoder_dilation: True
+        device: cpu
+    use_bottleneck: True
+    joint_channel: 3
+    device: cpu
+    l_bins : 2048
+
+loss_weight:
+    mse_weight: 1
+optimizer:
+    type: Adam
+    kwargs:
+        lr: 0.00002
+        betas: [0.5, 0.999]
+        weight_decay: 0
+    # schedular_kwargs:
+    #     milestones: [100, 200]
+    #     gamma: 0.1
+
+data:
+    name: aist   
+    # train_dir: data/all_split_train_interval
+    test_dir: data/all_split_test_interval
+    seq_len: 240
+    data_type: None
+testing:
+    height: 540
+    width: 960
+    ckpt_epoch: 300
+
+expname: sep_vqvae_large_bins_batch_64
+epoch: 500
+batch_size: 1
+save_per_epochs: 25
+test_freq: 20
+log_per_updates: 1
+seed: 42
+rotmat: False
+device: cpu
+global_vel: False
+ds_rate: 8
+move_train: 40
+sample_code_length: 150
+sample_code_rate: 16
+analysis_sequence: [[126, 81]]
