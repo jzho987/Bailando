@@ -53,6 +53,7 @@ class SepVQVAER(nn.Module):
     def __init__(self, hps):
         super().__init__()
         self.hps = hps
+        self.device = torch.device(hps.device)
         # self.cut_dim = hps.up_half_dim
         # self.use_rotmat = hps.use_rotmat if (hasattr(hps, 'use_rotmat') and hps.use_rotmat) else False
         self.chanel_num = hps.joint_channel
@@ -76,7 +77,7 @@ class SepVQVAER(nn.Module):
         xdown = self.vqvae_down.decode(zdown)
         b, t, cup = xup.size()
         _, _, cdown = xdown.size()
-        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num, self.chanel_num).cuda()
+        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num, self.chanel_num).to(self.device)
         x[:, :, smpl_up] = xup.view(b, t, cup//self.chanel_num, self.chanel_num)
         x[:, :, smpl_down] = xdown.view(b, t, cdown//self.chanel_num, self.chanel_num)
         
@@ -104,7 +105,7 @@ class SepVQVAER(nn.Module):
         xdown = self.vqvae_up.sample(n_samples)
         b, t, cup = xup.size()
         _, _, cdown = xdown.size()
-        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num, self.chanel_num).cuda()
+        x = torch.zeros(b, t, (cup+cdown)//self.chanel_num, self.chanel_num).to(self.device)
         x[:, :, smpl_up] = xup.view(b, t, cup//self.chanel_num, self.chanel_num)
         x[:, :, smpl_down] = xdown.view(b, t, cdown//self.chanel_num, self.chanel_num)
         return x
@@ -123,7 +124,7 @@ class SepVQVAER(nn.Module):
         _, _, cup = x_out_up.size()
         _, _, cdown = x_out_down.size()
 
-        xout = torch.zeros(b, t, (cup+cdown)//self.chanel_num, self.chanel_num).cuda().float()
+        xout = torch.zeros(b, t, (cup+cdown)//self.chanel_num, self.chanel_num).to(self.device).float()
         xout[:, :, smpl_up] = x_out_up.view(b, t, cup//self.chanel_num, self.chanel_num)
         xout[:, :, smpl_down] = x_out_down.view(b, t, cdown//self.chanel_num, self.chanel_num)
         

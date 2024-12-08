@@ -52,41 +52,66 @@ structure:
     joint_channel: 3
     l_bins : 2048
 
+    
+structure_generate:
+    name: CrossCondGPT2NoMusic
+    block_size: 29
+    base:
+        embd_pdrop: 0.1
+        resid_pdrop: 0.1
+        attn_pdrop: 0.1
+        vocab_size_up: 2048
+        vocab_size_down: 2048 
+        block_size: 29
+        n_layer: 6
+        n_head: 12
+        n_embd: 768 
+        n_music: 438
+        n_music_emb: 768
+    head:
+        embd_pdrop: 0.1
+        resid_pdrop: 0.1
+        attn_pdrop: 0.1
+        vocab_size: 2048
+        block_size: 29
+        n_layer: 6
+        n_head: 12
+        n_embd: 768
+        vocab_size_up: 2048
+        vocab_size_down: 2048 
+
 loss_weight:
     mse_weight: 1
 optimizer:
     type: Adam
     kwargs:
-        lr: 0.00001
+        lr: 0.0002
         betas: [0.5, 0.999]
         weight_decay: 0
-    # schedular_kwargs:
-    #     milestones: [100, 200]
-    #     gamma: 0.1
 
 data:
-    name: aist   
+    name: aist
     test_dir: data/all_split_test_interval
     seq_len: 240
     data_type: None
 testing:
     height: 540
     width: 960
-    ckpt_epoch: 500
+    ckpt_epoch: 180
 
-expname: sep_vqvae_large_bins_batch_256_root
+
+vqvae_weight: 'experiments/sep_vqvae_large_bins_batch_256_root/ckpt/epoch_500.pt'
+expname: cc_motion_gpt
+
 epoch: 500
 batch_size: 1
-save_per_epochs: 25
+save_per_epochs: 20
 test_freq: 20
-log_per_updates: 1
 seed: 42
-rotmat: False
 device: cpu
+rotmat: False
+cpu: True
 global_vel: True
 ds_rate: 8
-move_train: 8
-sample_code_length: 150
-sample_code_rate: 16
-init_weight: 'experiments/sep_vqvae_large_bins_batch_256_root/ckpt/epoch_500.pt'
-analysis_sequence: [[126, 81]]
+move: 8
+music_normalize: False

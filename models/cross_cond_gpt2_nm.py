@@ -24,19 +24,13 @@ class CrossCondGPT2NoMusic(nn.Module):
         return self.block_size
 
 
-    def sample(self, xs, cond, shift=None):
-        block_size = self.get_block_size() - 1
-        if shift is not None:
-            block_shift = min(shift, block_size)
-        else:
-            block_shift = block_size
+    def sample(self, xs, length: int):
         x_up, x_down = xs
-        for k in range(cond.size(1)):
-            x_cond_up = x_up if x_up.size(1) <= block_size else x_up[:, -(block_shift+(k-block_size-1)%(block_size-block_shift+1)):]
-            x_cond_down = x_down if x_down.size(1) <= block_size else x_down[:, -(block_shift+(k-block_size-1)%(block_size-block_shift+1)):]  # crop context if needed
-            cond_input = cond[:, :k+1] if k < block_size else cond[:, k-(block_shift+(k-block_size-1)%(block_size-block_shift+1))+1:k+1]
-
-            logits, _ = self.forward((x_cond_up, x_cond_down), cond_input)
+        for k in range(length):
+            print(f"x up shape: {x_up.shape}, x down shape: {x_down.shape}")
+            x_up_input = x_up[:, -28:]
+            x_down_input = x_down[:, -28:]
+            logits, _ = self.forward((x_up_input, x_down_input))
             logit_up, logit_down = logits
             logit_up = logit_up[:, -1, :]
             logit_down = logit_down[:, -1, :]
@@ -95,7 +89,6 @@ class CausalCrossConditionalSelfAttention(nn.Module):
 
     def forward(self, x, layer_past=None):
         B, T, C = x.size()  # T = 3*t (music up down)
-        print(f" x size: {B}, {T}, {C}")
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -216,7 +209,7 @@ class CrossCondGPTBaseNoMusic(nn.Module):
         _, t_down = index_down.size()
         assert t_up == t_down, f"assertion error at gpt base no music, index up and index down block size is different, t up: {t_up}, t down: {t_down}."
         t = t_up
-        assert t <= self.block_size, "Cannot forward, model block size is exhausted."
+        assert t <= self.block_size, f"Cannot forward, model block size is exhausted. t: {t}, block size {self.block_size}"
 
         token_embeddings_up = self.tok_emb_up(index_up) # each index maps to a (learnable) vector
         token_embeddings_down = self.tok_emb_down(index_down) # each index maps to a (learnable) vector
@@ -308,9 +301,9 @@ class CrossCondGPTHead(nn.Module):
         x = self.blocks(x)
         x = self.ln_f(x)
         N, T, C = x.size()
-        t = T//3
-        logits_up = self.head_up(x[:, t:t*2, :])
-        logits_down = self.head_down(x[:, t*2:t*3, :]) # down half 
+        t = T//2
+        logits_up = self.head_up(x[:, :t, :])
+        logits_down = self.head_down(x[:, t:t*2, :]) # down half 
 
         # if we are given some desired targets also calculate the loss
         loss_up, loss_down = None, None

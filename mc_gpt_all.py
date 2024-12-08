@@ -18,6 +18,7 @@ import itertools
 import numpy as np
 import models
 import datetime
+from utils.functional import visualizeAndWrite
 warnings.filterwarnings('ignore')
 
 import torch.nn.functional as F
@@ -28,6 +29,7 @@ import matplotlib.pyplot as plt
 class MCTall():
     def __init__(self, args):
         self.config = args
+        self.device = torch.device(args.device)
         torch.backends.cudnn.benchmark = True
         self._build()
 
@@ -130,24 +132,14 @@ class MCTall():
             gpt = self.model2.eval()
 
             config = self.config
-            # data = self.config.data
-            # criterion = nn.MSELoss()
-
-            
-            checkpoint = torch.load(config.vqvae_weight)
-            vqvae.load_state_dict(checkpoint['model'], strict=False)
-
-            # config = self.config
-            # model = self.model.eval()
             epoch_tested = config.testing.ckpt_epoch
 
-            checkpoint = torch.load(config.vqvae_weight)
+            checkpoint = torch.load(config.vqvae_weight, map_location=self.device)
             vqvae.load_state_dict(checkpoint['model'], strict=False)
 
             ckpt_path = os.path.join(self.ckptdir, f"epoch_{epoch_tested}.pt")
-            self.device = torch.device('cuda' if config.cuda else 'cpu')
             print("Evaluation...")
-            checkpoint = torch.load(ckpt_path)
+            checkpoint = torch.load(ckpt_path, map_location=self.device)
             gpt.load_state_dict(checkpoint['model'])
             gpt.eval()
 
@@ -155,51 +147,16 @@ class MCTall():
             random_id = 0  # np.random.randint(0, 1e4)
             # quants = {}
             quants_out = {}
-            for i_eval, batch_eval in enumerate(tqdm(self.test_loader, desc='Generating Dance Poses')):
-                # Prepare data
-                # pose_seq_eval = map(lambda x: x.to(self.device), batch_eval)
-                if hasattr(config, 'demo') and config.demo:
-                    music_seq = batch_eval.to(self.device)
-                    quants = ([torch.ones(1, 1,).to(self.device).long() * 423], [torch.ones(1, 1,).to(self.device).long() * 12])
-                else:
-                    music_seq, pose_seq = batch_eval
-                    music_seq = music_seq.to(self.device)
-                    pose_seq = pose_seq.to(self.device)
-                
-                    quants = vqvae.module.encode(pose_seq)
-                # print(pose_seq.size())
+            for i_eval, batch_eval in enumerate(tqdm(self.testing_data, desc='Generating Dance Poses')):
+                pose_seq = batch_eval.to(self.device)
+                quants = vqvae.module.encode(pose_seq)
+
                 if isinstance(quants, tuple):
-                    x = tuple(quants[i][0][:, :1].clone() for i in range(len(quants)))
+                    x = tuple(quants[i][0][:, :28].clone() for i in range(len(quants)))
                 else:
-                    x = quants[0][:, :1].clone()
-                
-                if hasattr(config, 'random_init_test') and config.random_init_test:
-                    if isinstance(quants, tuple):
-                        for iij in range(len(x)):
-                            x[iij][:, 0] = torch.randint(512, (1, ))
-                    else:
-                        x[:, 0] = torch.randint(512, (1, ))
+                    x = quants[0][:, :28].clone()
 
-                music_ds_rate = config.ds_rate if not hasattr(config, 'external_wav') else config.external_wav_rate
-                music_ds_rate = config.music_ds_rate if hasattr(config, 'music_ds_rate') else music_ds_rate
-                music_relative_rate = config.music_relative_rate if hasattr(config, 'music_relative_rate') else config.ds_rate
-                
-                music_seq = music_seq[:, :, :config.structure_generate.n_music//music_ds_rate].contiguous().float()
-                b, t, c = music_seq.size()
-                music_seq = music_seq.view(b, t//music_ds_rate, c*music_ds_rate)
-                music_relative_rate = config.music_relative_rate if hasattr(config, 'music_relative_rate') else config.ds_rate
-                
-
-                music_seq = music_seq[:, config.ds_rate//music_relative_rate:]
-                # it is just music_seq[:, 1:], ignoring the first music feature
-                
-                if hasattr(config, 'music_normalize') and config.music_normalize:
-                    music_seq = music_seq / ( t//music_ds_rate * 1.0 )
-                # print(music_seq.size())
-
-                # block_size = gpt.module.get_block_size()
-
-                zs = gpt.module.sample(x, cond=music_seq, shift=config.sample_shift if hasattr(config, 'sample_shift') else None)
+                zs = gpt.module.sample(x, 120)
 
                 pose_sample = vqvae.module.decode(zs)
 
@@ -212,11 +169,14 @@ class MCTall():
 
                 results.append(pose_sample)
                 if isinstance(zs, tuple):
-                    quants_out[self.dance_names[i_eval]] = tuple(zs[ii][0].cpu().data.numpy()[0] for ii in range(len(zs))) 
+                    quants_out[str(i_eval)] = tuple(zs[ii][0].cpu().data.numpy()[0] for ii in range(len(zs))) 
                 else:
-                    quants_out[self.dance_names[i_eval]] = zs[0].cpu().data.numpy()[0]
+                    quants_out[str(i_eval)] = zs[0].cpu().data.numpy()[0]
 
-            visualizeAndWrite(results, config, self.evaldir, self.dance_names, epoch_tested, quants_out)
+            dance_names = [str(x) for x in range(len(self.testing_data))]
+            visualizeAndWrite(results, config, self.evaldir, dance_names, epoch_tested, quants_out)
+
+
     def visgt(self,):
         config = self.config
         print("Visualizing ground truth")
@@ -355,8 +315,8 @@ class MCTall():
         
         model = nn.DataParallel(model)
         model2 = nn.DataParallel(model2)
-        self.model2 = model2.cuda()
-        self.model = model.cuda()
+        self.model2 = model2.to(self.device)
+        self.model = model.to(self.device)
 
 
     def _build_train_loader(self):
