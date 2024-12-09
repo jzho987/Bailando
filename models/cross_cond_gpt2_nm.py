@@ -26,10 +26,10 @@ class CrossCondGPT2NoMusic(nn.Module):
 
     def sample(self, xs, length: int):
         x_up, x_down = xs
+
         for k in range(length):
-            print(f"x up shape: {x_up.shape}, x down shape: {x_down.shape}")
-            x_up_input = x_up[:, -28:]
-            x_down_input = x_down[:, -28:]
+            x_up_input = x_up[:, -self.block_size:]
+            x_down_input = x_down[:, -self.block_size:]
             logits, _ = self.forward((x_up_input, x_down_input))
             logit_up, logit_down = logits
             logit_up = logit_up[:, -1, :]

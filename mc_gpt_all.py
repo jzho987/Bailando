@@ -120,7 +120,7 @@ class MCTall():
                         _, loss = gpt(quants_input, quants_target)
                         test_epoch_total_loss += loss.clone().detach().cpu().item()
 
-                    test_epoch_avg_loss = test_epoch_total_loss / len(training_data)
+                    test_epoch_avg_loss = test_epoch_total_loss / len(testing_data)
                     writer.add_scalar("test_epoch_avg_loss", test_epoch_avg_loss, epoch_i)
                     writer.flush()
                 gpt.train()
