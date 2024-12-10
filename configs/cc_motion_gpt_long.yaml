@@ -81,8 +81,8 @@ optimizer:
 
 data:
     name: aist
-    train_dir: data/all_split_train_interval_m8
-    test_dir: data/all_split_test_interval
+    train_dir: data/all_split_train_interval_46
+    test_dir: data/all_split_test_interval_46
     seq_len: 368
 testing:
     height: 540
