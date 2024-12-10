@@ -1,0 +1,105 @@
+structure:
+    name: SepVQVAER
+    up_half:
+        device: cuda
+        levels: 1
+        downs_t: [3,]
+        strides_t : [2,]
+        emb_width : 512
+        l_bins : 2048
+        l_mu : 0.99
+        commit : 0.02
+        hvqvae_multipliers : [1,]
+        width: 512
+        depth: 3
+        m_conv : 1.0
+        dilation_growth_rate : 3
+        sample_length: 368
+        use_bottleneck: True
+        joint_channel: 3
+        vqvae_reverse_decoder_dilation: True
+    down_half:
+        device: cuda
+        levels: 1
+        downs_t: [3,]
+        strides_t : [2,]
+        emb_width : 512
+        l_bins : 2048
+        l_mu : 0.99
+        commit : 0.02
+        hvqvae_multipliers : [1,]
+        width: 512
+        depth: 3
+        m_conv : 1.0
+        dilation_growth_rate : 3
+        sample_length: 368
+        use_bottleneck: True
+        joint_channel: 3
+        acc: 1.0
+        vqvae_reverse_decoder_dilation: True
+    device: cuda
+    use_bottleneck: True
+    joint_channel: 3
+    l_bins : 2048
+
+    
+structure_generate:
+    name: CrossCondGPT2NoMusic
+    block_size: 45
+    base:
+        embd_pdrop: 0.1
+        resid_pdrop: 0.1
+        attn_pdrop: 0.1
+        vocab_size_up: 2048
+        vocab_size_down: 2048 
+        block_size: 45
+        n_layer: 6
+        n_head: 12
+        n_embd: 768 
+        n_music: 438
+        n_music_emb: 768
+    head:
+        embd_pdrop: 0.1
+        resid_pdrop: 0.1
+        attn_pdrop: 0.1
+        vocab_size: 512
+        block_size: 45
+        n_layer: 6
+        n_head: 12
+        n_embd: 768
+        vocab_size_up: 2048
+        vocab_size_down: 2048 
+
+loss_weight:
+    mse_weight: 1
+optimizer:
+    type: Adam
+    kwargs:
+        lr: 0.0002
+        betas: [0.5, 0.999]
+        weight_decay: 0
+
+data:
+    name: aist
+    train_dir: data/all_split_train_interval_m8
+    test_dir: data/all_split_test_interval
+    seq_len: 368
+testing:
+    height: 540
+    width: 960
+    ckpt_epoch: 400
+
+vqvae_weight: 'experiments/sep_vqvae_large_bins_batch_256_root/ckpt/epoch_500.pt'
+expname: cc_motion_gpt_long
+
+epoch: 500
+batch_size: 128
+save_per_epochs: 20
+test_freq: 20
+seed: 42
+rotmat: False
+cuda: True
+global_vel: True
+ds_rate: 8
+move: 8
+music_normalize: False
