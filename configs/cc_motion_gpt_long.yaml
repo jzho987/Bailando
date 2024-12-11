@@ -97,6 +97,7 @@ batch_size: 128
 save_per_epochs: 20
 test_freq: 20
 seed: 42
+device: cuda
 rotmat: False
 cuda: True
 global_vel: True

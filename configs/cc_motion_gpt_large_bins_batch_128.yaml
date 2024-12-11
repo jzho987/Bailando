@@ -92,7 +92,7 @@ optimizer:
 data:
     name: aist
     train_dir: data/all_split_train_interval_m8
-    test_dir: data/all_split_test_interval
+    test_dir: data/all_split_test_interval_m8
     seq_len: 240
     data_type: None
 testing:
