@@ -80,10 +80,10 @@ class MCTall():
                         quants_target = quants[:, 1:].clone().detach()
                 
                 _, loss = gpt(quants_input, quants_target)
-                loss.backward()
+                loss.mean().backward()
                 optimizer.step()
 
-                train_epoch_total_loss += loss.clone().detach().cpu().item()
+                train_epoch_total_loss += loss.clone().mean().detach().cpu().item()
 
             train_epoch_avg_loss = train_epoch_total_loss / len(training_data)
             writer.add_scalar("train_epoch_avg_loss", train_epoch_avg_loss, epoch_i)
@@ -118,7 +118,7 @@ class MCTall():
                             quants_target = quants[:, 1:].clone().detach()
                         
                         _, loss = gpt(quants_input, quants_target)
-                        test_epoch_total_loss += loss.clone().detach().cpu().item()
+                        test_epoch_total_loss += loss.clone().mean().detach().cpu().item()
 
                     test_epoch_avg_loss = test_epoch_total_loss / len(testing_data)
                     writer.add_scalar("test_epoch_avg_loss", test_epoch_avg_loss, epoch_i)
